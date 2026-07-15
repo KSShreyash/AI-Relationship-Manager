@@ -26,13 +26,12 @@ def get_current_user(
             algorithms=["HS256"],
             audience="authenticated",
         )
-    except jwt.PyJWTError as exc:
+        return CurrentUser(user_id=uuid.UUID(payload["sub"]), email=payload.get("email", ""))
+    except (jwt.PyJWTError, KeyError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         ) from exc
-
-    return CurrentUser(user_id=uuid.UUID(payload["sub"]), email=payload.get("email", ""))
 
 # This project's Supabase dashboard (Project Settings -> API) presents its secret
 # under "Legacy JWT secret", confirming the HS256 shared-secret model above is the

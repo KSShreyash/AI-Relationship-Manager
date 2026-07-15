@@ -48,3 +48,20 @@ def test_malformed_token_raises_401():
         get_current_user(creds)
 
     assert exc_info.value.status_code == 401
+
+
+def test_token_with_invalid_uuid_sub_raises_401():
+    # Create a validly-signed, non-expired token with a malformed sub claim
+    payload = {
+        "sub": "not-a-uuid",
+        "email": "user@example.com",
+        "aud": "authenticated",
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=3600),
+    }
+    token = jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(creds)
+
+    assert exc_info.value.status_code == 401

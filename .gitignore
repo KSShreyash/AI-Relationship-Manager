@@ -1,0 +1,14 @@
+# backend/.gitignore
+backend/.env
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.venv/
+backend/*.egg-info/
+
+# frontend/.gitignore
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/dist/
+
+.DS_Store

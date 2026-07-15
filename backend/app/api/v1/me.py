@@ -45,4 +45,5 @@ async def graph_status(current_user: CurrentUser = Depends(get_current_user)):
         access_token = refreshed["access_token"]
 
     graph_me = await get_me(access_token)
+    await profiles_repo.set_graph_connection_status(current_user.user_id, "connected")
     return {"connected": True, "graph_me": graph_me}

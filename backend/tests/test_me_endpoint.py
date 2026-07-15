@@ -31,6 +31,8 @@ async def test_graph_status_returns_me_when_token_valid(pool, test_auth_user):
 
     assert response.status_code == 200
     assert response.json() == {"connected": True, "graph_me": {"mail": email}}
+    profile = await ProfilesRepository(pool).get(user_id)
+    assert profile["graph_connection_status"] == "connected"
     app.dependency_overrides.clear()
 
 
@@ -62,6 +64,8 @@ async def test_graph_status_refreshes_expired_token(pool, test_auth_user):
     row = await GraphTokensRepository(pool).get(user_id)
     from app.core.security import decrypt_token
     assert decrypt_token(row["encrypted_access_token"]) == "new-access"
+    profile = await ProfilesRepository(pool).get(user_id)
+    assert profile["graph_connection_status"] == "connected"
     app.dependency_overrides.clear()
 
 

@@ -41,6 +41,17 @@ describe('CallbackPage', () => {
       'https://api.example.com/api/auth/graph-tokens',
       expect.objectContaining({ method: 'POST' })
     )
+
+    const [, requestInit] = (global.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0]
+    const body = JSON.parse(requestInit.body as string)
+    expect(body.scopes).toEqual([
+      'User.Read',
+      'Mail.Read',
+      'Chat.Read',
+      'Calendars.ReadWrite',
+      'OnlineMeetings.ReadWrite',
+    ])
   })
 
   it('shows an error message when Microsoft does not return Graph tokens', async () => {

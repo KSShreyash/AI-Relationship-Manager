@@ -1,9 +1,7 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-
-const GRAPH_SCOPES =
-  'openid email profile offline_access User.Read Mail.Read Chat.Read Calendars.ReadWrite OnlineMeetings.ReadWrite'
+import { OAUTH_SCOPES } from '@/lib/graph-scopes'
 
 export default function LoginPage() {
   async function handleSignIn() {
@@ -11,7 +9,7 @@ export default function LoginPage() {
     await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {
-        scopes: GRAPH_SCOPES,
+        scopes: OAUTH_SCOPES,
         redirectTo: `${window.location.origin}/callback`,
       },
     })

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { createClient } from '@/lib/supabase/client'
+import { GRAPH_RESOURCE_SCOPES } from '@/lib/graph-scopes'
 
 export default function CallbackPage() {
   const router = useRouter()
@@ -41,7 +42,7 @@ export default function CallbackPage() {
             provider_token: session.provider_token,
             provider_refresh_token: session.provider_refresh_token,
             expires_in: 3600,
-            scopes: [],
+            scopes: GRAPH_RESOURCE_SCOPES,
           }),
         }
       )

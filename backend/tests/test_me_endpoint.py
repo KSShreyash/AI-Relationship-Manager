@@ -1,0 +1,91 @@
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from app.core.deps import CurrentUser, get_current_user
+from app.core.security import encrypt_token
+from app.main import app
+from app.repositories.graph_tokens import GraphTokensRepository
+from app.repositories.profiles import ProfilesRepository
+
+
+@pytest.mark.asyncio
+async def test_graph_status_returns_me_when_token_valid(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=user_id, email=email)
+
+    with patch("app.api.v1.me.get_me", new=AsyncMock(return_value={"mail": email})):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/me/graph-status")
+
+    assert response.status_code == 200
+    assert response.json() == {"connected": True, "graph_me": {"mail": email}}
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_graph_status_refreshes_expired_token(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("expired-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        scopes=["Mail.Read"],
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=user_id, email=email)
+
+    refreshed = {
+        "access_token": "new-access",
+        "refresh_token": "new-refresh",
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+    }
+    with patch("app.api.v1.me.refresh_access_token", return_value=refreshed), \
+         patch("app.api.v1.me.get_me", new=AsyncMock(return_value={"mail": email})):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/me/graph-status")
+
+    assert response.status_code == 200
+    row = await GraphTokensRepository(pool).get(user_id)
+    from app.core.security import decrypt_token
+    assert decrypt_token(row["encrypted_access_token"]) == "new-access"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_graph_status_sets_needs_reauth_on_refresh_failure(pool, test_auth_user):
+    from app.services.graph_client import GraphRefreshError
+
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("expired-access"),
+        encrypted_refresh_token=encrypt_token("dead-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        scopes=["Mail.Read"],
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=user_id, email=email)
+
+    with patch("app.api.v1.me.refresh_access_token", side_effect=GraphRefreshError("expired")):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/me/graph-status")
+
+    assert response.status_code == 409
+    profile = await ProfilesRepository(pool).get(user_id)
+    assert profile["graph_connection_status"] == "needs_reauth"
+    app.dependency_overrides.clear()

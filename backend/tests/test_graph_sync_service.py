@@ -285,6 +285,22 @@ async def test_sync_chat_sets_not_available_when_list_chats_forbidden(pool, test
 
 
 @pytest.mark.asyncio
+async def test_sync_chat_sets_not_available_when_message_fetch_forbidden(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    chats = [{"id": "chat-1"}]
+    request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/chats/chat-1/messages")
+    error = httpx.HTTPStatusError("forbidden", request=request, response=httpx.Response(403, request=request))
+
+    with patch("app.services.graph_sync.graph_client.list_chats", return_value=chats), \
+         patch("app.services.graph_sync.graph_client.fetch_chat_messages_page", side_effect=error):
+        await sync_chat(pool, user_id, "access-token")
+
+    state = await SyncStateRepository(pool).get(user_id, "chat")
+    assert state["status"] == "not_available"
+
+
+@pytest.mark.asyncio
 async def test_sync_chat_skips_when_already_not_available(pool, test_auth_user):
     user_id, email = test_auth_user
     await ProfilesRepository(pool).upsert(user_id, email)

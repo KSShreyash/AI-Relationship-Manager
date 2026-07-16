@@ -145,27 +145,27 @@ async def sync_chat(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -
 
     try:
         chats = await graph_client.list_chats(access_token)
+
+        for chat in chats:
+            chat_id = chat["id"]
+            url = graph_client.chat_messages_url(chat_id, since)
+            while url:
+                page = await graph_client.fetch_chat_messages_page(access_token, url)
+                for item in page["items"]:
+                    from_user = (item.get("from") or {}).get("user") or {}
+                    await messages.upsert(
+                        user_id=user_id,
+                        graph_chat_id=chat_id,
+                        graph_message_id=item["id"],
+                        from_user=from_user.get("displayName"),
+                        content=(item.get("body") or {}).get("content"),
+                        sent_at=_parse_graph_datetime(item.get("createdDateTime")),
+                    )
+                url = page["next_link"]
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (400, 403):
             await sync_state.upsert(user_id, "chat", None, "not_available")
             return
         raise
-
-    for chat in chats:
-        chat_id = chat["id"]
-        url = graph_client.chat_messages_url(chat_id, since)
-        while url:
-            page = await graph_client.fetch_chat_messages_page(access_token, url)
-            for item in page["items"]:
-                from_user = (item.get("from") or {}).get("user") or {}
-                await messages.upsert(
-                    user_id=user_id,
-                    graph_chat_id=chat_id,
-                    graph_message_id=item["id"],
-                    from_user=from_user.get("displayName"),
-                    content=(item.get("body") or {}).get("content"),
-                    sent_at=_parse_graph_datetime(item.get("createdDateTime")),
-                )
-            url = page["next_link"]
 
     await sync_state.upsert(user_id, "chat", None, "ok")

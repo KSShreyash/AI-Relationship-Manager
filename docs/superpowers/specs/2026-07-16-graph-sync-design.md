@@ -75,7 +75,7 @@ Four new tables. Same RLS posture as `ms_graph_tokens`: RLS enabled, zero polici
 | `id` | uuid, PK | |
 | `user_id` | uuid, FK → `profiles.id` | |
 | `graph_chat_id` | text | |
-| `graph_message_id` | text | unique per `user_id` |
+| `graph_message_id` | text | unique per `(user_id, graph_chat_id)` — Graph message IDs are only unique within a chat, not globally across a user's chats |
 | `from_user` | text | |
 | `content` | text | |
 | `sent_at` | timestamptz | |

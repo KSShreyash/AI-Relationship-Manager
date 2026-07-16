@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     ms_client_secret: str
     ms_authority: str = "https://login.microsoftonline.com/common"
     cors_allow_origins: str = "http://localhost:3000"
+    sync_secret: str
 
 
 settings = Settings()

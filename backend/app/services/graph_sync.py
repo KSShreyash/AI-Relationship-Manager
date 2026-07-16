@@ -5,11 +5,13 @@ from datetime import datetime, timedelta, timezone
 import asyncpg
 import httpx
 
+from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.emails import EmailsRepository
 from app.repositories.sync_state import SyncStateRepository
 from app.services import graph_client
 
 BACKFILL_DAYS = 30
+CALENDAR_LOOKAHEAD_DAYS = 90
 
 _FRACTION_RE = re.compile(r"(\.\d{7,})")
 
@@ -70,5 +72,57 @@ async def sync_mail(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code in (400, 403):
             await sync_state.upsert(user_id, "mail", None, "not_available")
+        else:
+            raise
+
+
+async def sync_calendar(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -> None:
+    sync_state = SyncStateRepository(pool)
+    events = CalendarEventsRepository(pool)
+
+    state = await sync_state.get(user_id, "calendar")
+    if state is not None and state["status"] == "not_available":
+        return
+
+    if state and state["delta_link"]:
+        url = state["delta_link"]
+    else:
+        now = datetime.now(timezone.utc)
+        url = graph_client.calendar_delta_url(
+            now - timedelta(days=BACKFILL_DAYS),
+            now + timedelta(days=CALENDAR_LOOKAHEAD_DAYS),
+        )
+
+    try:
+        delta_link = None
+        while True:
+            page = await graph_client.fetch_delta_page(access_token, url)
+            for item in page["items"]:
+                if "@removed" in item:
+                    await events.delete(user_id, item["id"])
+                    continue
+                online_meeting = item.get("onlineMeeting") or {}
+                await events.upsert(
+                    user_id=user_id,
+                    graph_event_id=item["id"],
+                    subject=item.get("subject"),
+                    organizer=((item.get("organizer") or {}).get("emailAddress") or {}).get("address"),
+                    attendees=[
+                        (a.get("emailAddress") or {}) for a in item.get("attendees", [])
+                    ],
+                    start_time=_parse_graph_datetime((item.get("start") or {}).get("dateTime")),
+                    end_time=_parse_graph_datetime((item.get("end") or {}).get("dateTime")),
+                    is_online_meeting=item.get("isOnlineMeeting", False),
+                    online_meeting_join_url=online_meeting.get("joinUrl"),
+                    body_text=(item.get("body") or {}).get("content"),
+                )
+            if page["delta_link"]:
+                delta_link = page["delta_link"]
+                break
+            url = page["next_link"]
+        await sync_state.upsert(user_id, "calendar", delta_link, "ok")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (400, 403):
+            await sync_state.upsert(user_id, "calendar", None, "not_available")
         else:
             raise

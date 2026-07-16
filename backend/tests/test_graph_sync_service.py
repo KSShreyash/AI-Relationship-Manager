@@ -5,10 +5,11 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.emails import EmailsRepository
 from app.repositories.profiles import ProfilesRepository
 from app.repositories.sync_state import SyncStateRepository
-from app.services.graph_sync import _parse_graph_datetime, sync_mail
+from app.services.graph_sync import _parse_graph_datetime, sync_calendar, sync_mail
 
 
 def test_parse_graph_datetime_handles_z_suffix():
@@ -118,3 +119,62 @@ async def test_sync_mail_skips_when_already_not_available(pool, test_auth_user):
         await sync_mail(pool, user_id, "access-token")
 
     mock_fetch.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_calendar_upserts_with_online_meeting_info(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    page = {
+        "items": [
+            {
+                "id": "evt-1",
+                "subject": "Standup",
+                "organizer": {"emailAddress": {"address": "a@example.com"}},
+                "attendees": [{"emailAddress": {"address": "b@example.com", "name": "B"}}],
+                "start": {"dateTime": "2026-07-01T09:00:00.0000000", "timeZone": "UTC"},
+                "end": {"dateTime": "2026-07-01T09:30:00.0000000", "timeZone": "UTC"},
+                "isOnlineMeeting": True,
+                "onlineMeeting": {"joinUrl": "https://teams.microsoft.com/l/meetup-join/xyz"},
+                "body": {"content": "Daily sync"},
+            }
+        ],
+        "next_link": None,
+        "delta_link": "https://graph.microsoft.com/v1.0/calendarView/delta?$deltatoken=abc",
+    }
+    with patch("app.services.graph_sync.graph_client.fetch_delta_page", return_value=page):
+        await sync_calendar(pool, user_id, "access-token")
+
+    assert await CalendarEventsRepository(pool).count(user_id) == 1
+    state = await SyncStateRepository(pool).get(user_id, "calendar")
+    assert state["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_sync_calendar_first_sync_uses_backfill_and_lookahead_window(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    page = {"items": [], "next_link": None, "delta_link": "https://graph.microsoft.com/v1.0/calendarView/delta?$deltatoken=abc"}
+
+    with patch("app.services.graph_sync.graph_client.fetch_delta_page", return_value=page), \
+         patch("app.services.graph_sync.graph_client.calendar_delta_url") as mock_url:
+        mock_url.return_value = "https://graph.microsoft.com/v1.0/me/calendarView/delta?start=x&end=y"
+        await sync_calendar(pool, user_id, "access-token")
+
+    assert mock_url.call_count == 1
+    start_arg, end_arg = mock_url.call_args[0]
+    assert (end_arg - start_arg).days > 100  # spans BACKFILL_DAYS behind + CALENDAR_LOOKAHEAD_DAYS ahead
+
+
+@pytest.mark.asyncio
+async def test_sync_calendar_sets_not_available_on_403(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/me/calendarView/delta")
+    error = httpx.HTTPStatusError("forbidden", request=request, response=httpx.Response(403, request=request))
+
+    with patch("app.services.graph_sync.graph_client.fetch_delta_page", side_effect=error):
+        await sync_calendar(pool, user_id, "access-token")
+
+    state = await SyncStateRepository(pool).get(user_id, "calendar")
+    assert state["status"] == "not_available"

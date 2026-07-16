@@ -3,11 +3,28 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.core.config import settings
+from app.core import deps
 from app.core.deps import get_current_user
+
+_private_key = ec.generate_private_key(ec.SECP256R1())
+
+
+class _FakeSigningKey:
+    def __init__(self, key):
+        self.key = key
+
+
+@pytest.fixture(autouse=True)
+def _stub_jwks(monkeypatch):
+    monkeypatch.setattr(
+        deps._jwks_client,
+        "get_signing_key_from_jwt",
+        lambda token: _FakeSigningKey(_private_key.public_key()),
+    )
 
 
 def _make_token(sub: str, exp_delta_seconds: int = 3600) -> str:
@@ -17,7 +34,7 @@ def _make_token(sub: str, exp_delta_seconds: int = 3600) -> str:
         "aud": "authenticated",
         "exp": datetime.now(timezone.utc) + timedelta(seconds=exp_delta_seconds),
     }
-    return jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
+    return jwt.encode(payload, _private_key, algorithm="ES256")
 
 
 def test_valid_token_returns_current_user():
@@ -58,7 +75,7 @@ def test_token_with_invalid_uuid_sub_raises_401():
         "aud": "authenticated",
         "exp": datetime.now(timezone.utc) + timedelta(seconds=3600),
     }
-    token = jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
+    token = jwt.encode(payload, _private_key, algorithm="ES256")
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
     with pytest.raises(HTTPException) as exc_info:

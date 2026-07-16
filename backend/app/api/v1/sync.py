@@ -19,8 +19,8 @@ async def run_my_sync(current_user: CurrentUser = Depends(get_current_user)):
 
 
 @router.post("/run")
-async def run_bulk_sync(x_sync_secret: str = Header(...)):
-    if not hmac.compare_digest(x_sync_secret, settings.sync_secret):
+async def run_bulk_sync(x_sync_secret: str | None = Header(default=None)):
+    if not x_sync_secret or not hmac.compare_digest(x_sync_secret, settings.sync_secret):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid sync secret")
 
     pool = await get_pool()

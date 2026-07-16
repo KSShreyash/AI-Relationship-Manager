@@ -1,16 +1,19 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import httpx
 import pytest
 
+from app.core.security import decrypt_token, encrypt_token
 from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.chat_messages import ChatMessagesRepository
 from app.repositories.emails import EmailsRepository
+from app.repositories.graph_tokens import GraphTokensRepository
 from app.repositories.profiles import ProfilesRepository
 from app.repositories.sync_state import SyncStateRepository
-from app.services.graph_sync import _parse_graph_datetime, sync_calendar, sync_chat, sync_mail
+from app.services.graph_client import GraphRefreshError
+from app.services.graph_sync import _parse_graph_datetime, sync_calendar, sync_chat, sync_mail, sync_user
 
 
 def test_parse_graph_datetime_handles_z_suffix():
@@ -310,3 +313,87 @@ async def test_sync_chat_skips_when_already_not_available(pool, test_auth_user):
         await sync_chat(pool, user_id, "access-token")
 
     mock_list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_user_runs_all_three_resources(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read", "Calendars.ReadWrite", "Chat.Read"],
+    )
+
+    with patch("app.services.graph_sync.sync_mail") as mock_mail, \
+         patch("app.services.graph_sync.sync_calendar") as mock_calendar, \
+         patch("app.services.graph_sync.sync_chat") as mock_chat:
+        mock_mail.return_value = None
+        mock_calendar.return_value = None
+        mock_chat.return_value = None
+        await sync_user(pool, user_id)
+
+    mock_mail.assert_called_once_with(pool, user_id, "valid-access")
+    mock_calendar.assert_called_once_with(pool, user_id, "valid-access")
+    mock_chat.assert_called_once_with(pool, user_id, "valid-access")
+
+
+@pytest.mark.asyncio
+async def test_sync_user_refreshes_expired_token_first(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("expired-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        scopes=["Mail.Read"],
+    )
+    refreshed = {
+        "access_token": "new-access",
+        "refresh_token": "new-refresh",
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+    }
+
+    with patch("app.services.graph_sync.refresh_access_token", return_value=refreshed), \
+         patch("app.services.graph_sync.sync_mail") as mock_mail, \
+         patch("app.services.graph_sync.sync_calendar"), \
+         patch("app.services.graph_sync.sync_chat"):
+        await sync_user(pool, user_id)
+
+    mock_mail.assert_called_once_with(pool, user_id, "new-access")
+    row = await GraphTokensRepository(pool).get(user_id)
+    assert decrypt_token(row["encrypted_access_token"]) == "new-access"
+
+
+@pytest.mark.asyncio
+async def test_sync_user_sets_needs_reauth_on_refresh_failure(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("expired-access"),
+        encrypted_refresh_token=encrypt_token("dead-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        scopes=["Mail.Read"],
+    )
+
+    with patch("app.services.graph_sync.refresh_access_token", side_effect=GraphRefreshError("expired")), \
+         patch("app.services.graph_sync.sync_mail") as mock_mail:
+        await sync_user(pool, user_id)
+
+    mock_mail.assert_not_called()
+    profile = await ProfilesRepository(pool).get(user_id)
+    assert profile["graph_connection_status"] == "needs_reauth"
+
+
+@pytest.mark.asyncio
+async def test_sync_user_noop_when_not_connected(pool, test_auth_user):
+    user_id, _ = test_auth_user
+
+    with patch("app.services.graph_sync.sync_mail") as mock_mail:
+        await sync_user(pool, user_id)
+
+    mock_mail.assert_not_called()

@@ -4,12 +4,17 @@ from datetime import datetime, timedelta, timezone
 
 import asyncpg
 import httpx
+from starlette.concurrency import run_in_threadpool
 
+from app.core.security import decrypt_token, encrypt_token
 from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.chat_messages import ChatMessagesRepository
 from app.repositories.emails import EmailsRepository
+from app.repositories.graph_tokens import GraphTokensRepository
+from app.repositories.profiles import ProfilesRepository
 from app.repositories.sync_state import SyncStateRepository
 from app.services import graph_client
+from app.services.graph_client import GraphRefreshError, refresh_access_token
 
 BACKFILL_DAYS = 30
 CALENDAR_LOOKAHEAD_DAYS = 90
@@ -169,3 +174,37 @@ async def sync_chat(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -
         raise
 
     await sync_state.upsert(user_id, "chat", None, "ok")
+
+
+async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
+    tokens_repo = GraphTokensRepository(pool)
+    profiles_repo = ProfilesRepository(pool)
+
+    token_row = await tokens_repo.get(user_id)
+    if token_row is None:
+        return
+
+    access_token = decrypt_token(token_row["encrypted_access_token"])
+
+    if token_row["access_token_expires_at"] <= datetime.now(timezone.utc):
+        refresh_token = decrypt_token(token_row["encrypted_refresh_token"])
+        try:
+            refreshed = await run_in_threadpool(
+                refresh_access_token, refresh_token, scopes=token_row["scopes"]
+            )
+        except GraphRefreshError:
+            await profiles_repo.set_graph_connection_status(user_id, "needs_reauth")
+            return
+
+        await tokens_repo.upsert(
+            user_id=user_id,
+            encrypted_access_token=encrypt_token(refreshed["access_token"]),
+            encrypted_refresh_token=encrypt_token(refreshed["refresh_token"]),
+            access_token_expires_at=refreshed["expires_at"],
+            scopes=token_row["scopes"],
+        )
+        access_token = refreshed["access_token"]
+
+    await sync_mail(pool, user_id, access_token)
+    await sync_calendar(pool, user_id, access_token)
+    await sync_chat(pool, user_id, access_token)

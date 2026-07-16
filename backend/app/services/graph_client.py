@@ -72,3 +72,31 @@ async def fetch_delta_page(access_token: str, url: str) -> dict:
         "next_link": body.get("@odata.nextLink"),
         "delta_link": body.get("@odata.deltaLink"),
     }
+
+
+def chat_messages_url(chat_id: str, since: datetime) -> str:
+    since_str = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (
+        f"{GRAPH_BASE_URL}/chats/{chat_id}/messages"
+        f"?$orderby=lastModifiedDateTime desc&$filter=lastModifiedDateTime gt {since_str}"
+    )
+
+
+async def list_chats(access_token: str) -> list[dict]:
+    chats: list[dict] = []
+    url = f"{GRAPH_BASE_URL}/me/chats"
+    async with httpx.AsyncClient() as client:
+        while url:
+            body = await _get_json(client, url, {"Authorization": f"Bearer {access_token}"})
+            chats.extend(body.get("value", []))
+            url = body.get("@odata.nextLink")
+    return chats
+
+
+async def fetch_chat_messages_page(access_token: str, url: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        body = await _get_json(client, url, {"Authorization": f"Bearer {access_token}"})
+    return {
+        "items": body.get("value", []),
+        "next_link": body.get("@odata.nextLink"),
+    }

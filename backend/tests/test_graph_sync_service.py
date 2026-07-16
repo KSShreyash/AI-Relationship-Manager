@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -153,6 +154,17 @@ async def test_sync_calendar_upserts_with_online_meeting_info(pool, test_auth_us
     state = await SyncStateRepository(pool).get(user_id, "calendar")
     assert state["status"] == "ok"
 
+    row = await pool.fetchrow(
+        "select organizer, attendees, is_online_meeting, online_meeting_join_url "
+        "from public.calendar_events where user_id = $1 and graph_event_id = $2",
+        user_id,
+        "evt-1",
+    )
+    assert row["organizer"] == "a@example.com"
+    assert json.loads(row["attendees"]) == [{"address": "b@example.com", "name": "B"}]
+    assert row["is_online_meeting"] is True
+    assert row["online_meeting_join_url"] == "https://teams.microsoft.com/l/meetup-join/xyz"
+
 
 @pytest.mark.asyncio
 async def test_sync_calendar_first_sync_uses_backfill_and_lookahead_window(pool, test_auth_user):
@@ -288,7 +300,7 @@ async def test_sync_chat_sets_not_available_when_list_chats_forbidden(pool, test
 
 
 @pytest.mark.asyncio
-async def test_sync_chat_sets_not_available_when_message_fetch_forbidden(pool, test_auth_user):
+async def test_sync_chat_skips_restricted_chat_but_still_reports_ok(pool, test_auth_user):
     user_id, email = test_auth_user
     await ProfilesRepository(pool).upsert(user_id, email)
     chats = [{"id": "chat-1"}]
@@ -299,8 +311,47 @@ async def test_sync_chat_sets_not_available_when_message_fetch_forbidden(pool, t
          patch("app.services.graph_sync.graph_client.fetch_chat_messages_page", side_effect=error):
         await sync_chat(pool, user_id, "access-token")
 
+    # A single chat being inaccessible is a per-chat restriction, not a
+    # feature-unsupported signal (that's list_chats' job) - the resource as
+    # a whole should still report "ok", just with that one chat skipped.
+    assert await ChatMessagesRepository(pool).count(user_id) == 0
     state = await SyncStateRepository(pool).get(user_id, "chat")
-    assert state["status"] == "not_available"
+    assert state["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_sync_chat_skips_restricted_chat_but_syncs_others(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    chats = [{"id": "chat-restricted"}, {"id": "chat-ok"}]
+
+    request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/chats/chat-restricted/messages")
+    forbidden = httpx.HTTPStatusError("forbidden", request=request, response=httpx.Response(403, request=request))
+
+    ok_page = {
+        "items": [
+            {
+                "id": "chat-msg-ok",
+                "from": {"user": {"displayName": "Bob"}},
+                "body": {"content": "hi"},
+                "createdDateTime": "2026-07-01T12:00:00Z",
+            }
+        ],
+        "next_link": None,
+    }
+
+    async def fake_fetch(access_token, url):
+        if "chat-restricted" in url:
+            raise forbidden
+        return ok_page
+
+    with patch("app.services.graph_sync.graph_client.list_chats", return_value=chats), \
+         patch("app.services.graph_sync.graph_client.fetch_chat_messages_page", side_effect=fake_fetch):
+        await sync_chat(pool, user_id, "access-token")
+
+    assert await ChatMessagesRepository(pool).count(user_id) == 1
+    state = await SyncStateRepository(pool).get(user_id, "chat")
+    assert state["status"] == "ok"
 
 
 @pytest.mark.asyncio
@@ -397,3 +448,91 @@ async def test_sync_user_noop_when_not_connected(pool, test_auth_user):
         await sync_user(pool, user_id)
 
     mock_mail.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_user_recovers_from_401_mid_sync_by_refreshing(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("stale-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+    refreshed = {
+        "access_token": "recovered-access",
+        "refresh_token": "recovered-refresh",
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+    }
+    request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta")
+    unauthorized = httpx.HTTPStatusError("unauthorized", request=request, response=httpx.Response(401, request=request))
+
+    call_count = {"n": 0}
+
+    async def fake_sync_mail(pool_arg, uid, token):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise unauthorized
+        assert token == "recovered-access"
+
+    with patch("app.services.graph_sync.refresh_access_token", return_value=refreshed), \
+         patch("app.services.graph_sync.sync_mail", side_effect=fake_sync_mail), \
+         patch("app.services.graph_sync.sync_calendar") as mock_calendar, \
+         patch("app.services.graph_sync.sync_chat") as mock_chat:
+        await sync_user(pool, user_id)
+
+    assert call_count["n"] == 2
+    mock_calendar.assert_called_once_with(pool, user_id, "recovered-access")
+    mock_chat.assert_called_once_with(pool, user_id, "recovered-access")
+    row = await GraphTokensRepository(pool).get(user_id)
+    assert decrypt_token(row["encrypted_access_token"]) == "recovered-access"
+
+
+@pytest.mark.asyncio
+async def test_sync_user_sets_needs_reauth_when_401_mid_sync_refresh_fails(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("stale-access"),
+        encrypted_refresh_token=encrypt_token("dead-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+    request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta")
+    unauthorized = httpx.HTTPStatusError("unauthorized", request=request, response=httpx.Response(401, request=request))
+
+    with patch("app.services.graph_sync.refresh_access_token", side_effect=GraphRefreshError("expired")), \
+         patch("app.services.graph_sync.sync_mail", side_effect=unauthorized), \
+         patch("app.services.graph_sync.sync_calendar") as mock_calendar, \
+         patch("app.services.graph_sync.sync_chat") as mock_chat:
+        await sync_user(pool, user_id)
+
+    mock_calendar.assert_not_called()
+    mock_chat.assert_not_called()
+    profile = await ProfilesRepository(pool).get(user_id)
+    assert profile["graph_connection_status"] == "needs_reauth"
+
+
+@pytest.mark.asyncio
+async def test_sync_user_isolates_resource_failures(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+
+    with patch("app.services.graph_sync.sync_mail", side_effect=RuntimeError("mail boom")), \
+         patch("app.services.graph_sync.sync_calendar") as mock_calendar, \
+         patch("app.services.graph_sync.sync_chat") as mock_chat:
+        with pytest.raises(RuntimeError, match="mail boom"):
+            await sync_user(pool, user_id)
+
+    mock_calendar.assert_called_once_with(pool, user_id, "valid-access")
+    mock_chat.assert_called_once_with(pool, user_id, "valid-access")

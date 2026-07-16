@@ -150,10 +150,16 @@ async def sync_chat(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -
 
     try:
         chats = await graph_client.list_chats(access_token)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (400, 403):
+            await sync_state.upsert(user_id, "chat", None, "not_available")
+            return
+        raise
 
-        for chat in chats:
-            chat_id = chat["id"]
-            url = graph_client.chat_messages_url(chat_id, since)
+    for chat in chats:
+        chat_id = chat["id"]
+        url = graph_client.chat_messages_url(chat_id, since)
+        try:
             while url:
                 page = await graph_client.fetch_chat_messages_page(access_token, url)
                 for item in page["items"]:
@@ -167,18 +173,46 @@ async def sync_chat(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -
                         sent_at=_parse_graph_datetime(item.get("createdDateTime")),
                     )
                 url = page["next_link"]
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (400, 403):
-            await sync_state.upsert(user_id, "chat", None, "not_available")
-            return
-        raise
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (400, 403):
+                # This specific chat isn't accessible (e.g. a per-chat policy
+                # restriction) - skip it rather than disabling chat sync for
+                # the whole account, since list_chats already succeeded.
+                continue
+            raise
 
     await sync_state.upsert(user_id, "chat", None, "ok")
 
 
-async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
+async def _refresh_and_persist(pool: asyncpg.Pool, user_id: uuid.UUID) -> str | None:
     tokens_repo = GraphTokensRepository(pool)
     profiles_repo = ProfilesRepository(pool)
+
+    token_row = await tokens_repo.get(user_id)
+    if token_row is None:
+        return None
+
+    refresh_token = decrypt_token(token_row["encrypted_refresh_token"])
+    try:
+        refreshed = await run_in_threadpool(
+            refresh_access_token, refresh_token, scopes=token_row["scopes"]
+        )
+    except GraphRefreshError:
+        await profiles_repo.set_graph_connection_status(user_id, "needs_reauth")
+        return None
+
+    await tokens_repo.upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token(refreshed["access_token"]),
+        encrypted_refresh_token=encrypt_token(refreshed["refresh_token"]),
+        access_token_expires_at=refreshed["expires_at"],
+        scopes=token_row["scopes"],
+    )
+    return refreshed["access_token"]
+
+
+async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
+    tokens_repo = GraphTokensRepository(pool)
 
     token_row = await tokens_repo.get(user_id)
     if token_row is None:
@@ -187,24 +221,27 @@ async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
     access_token = decrypt_token(token_row["encrypted_access_token"])
 
     if token_row["access_token_expires_at"] <= datetime.now(timezone.utc):
-        refresh_token = decrypt_token(token_row["encrypted_refresh_token"])
-        try:
-            refreshed = await run_in_threadpool(
-                refresh_access_token, refresh_token, scopes=token_row["scopes"]
-            )
-        except GraphRefreshError:
-            await profiles_repo.set_graph_connection_status(user_id, "needs_reauth")
+        access_token = await _refresh_and_persist(pool, user_id)
+        if access_token is None:
             return
 
-        await tokens_repo.upsert(
-            user_id=user_id,
-            encrypted_access_token=encrypt_token(refreshed["access_token"]),
-            encrypted_refresh_token=encrypt_token(refreshed["refresh_token"]),
-            access_token_expires_at=refreshed["expires_at"],
-            scopes=token_row["scopes"],
-        )
-        access_token = refreshed["access_token"]
+    errors: list[Exception] = []
+    for sync_fn in (sync_mail, sync_calendar, sync_chat):
+        try:
+            await sync_fn(pool, user_id, access_token)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                access_token = await _refresh_and_persist(pool, user_id)
+                if access_token is None:
+                    return
+                try:
+                    await sync_fn(pool, user_id, access_token)
+                except Exception as retry_exc:
+                    errors.append(retry_exc)
+            else:
+                errors.append(exc)
+        except Exception as exc:
+            errors.append(exc)
 
-    await sync_mail(pool, user_id, access_token)
-    await sync_calendar(pool, user_id, access_token)
-    await sync_chat(pool, user_id, access_token)
+    if errors:
+        raise errors[0]

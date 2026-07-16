@@ -3,6 +3,7 @@ import re
 
 import pytest
 import respx
+import httpx
 from httpx import Response
 
 from app.services.graph_client import calendar_delta_url, fetch_delta_page, mail_delta_url, chat_messages_url, fetch_chat_messages_page, list_chats
@@ -106,7 +107,7 @@ async def test_list_chats_follows_pagination():
 async def test_list_chats_raises_on_forbidden_personal_account():
     respx.get("https://graph.microsoft.com/v1.0/me/chats").mock(return_value=Response(403))
 
-    with pytest.raises(Exception):
+    with pytest.raises(httpx.HTTPStatusError):
         await list_chats("access-token")
 
 

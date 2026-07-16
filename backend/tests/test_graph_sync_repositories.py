@@ -60,6 +60,13 @@ async def test_emails_upsert_dedupes_by_graph_message_id(pool, test_auth_user):
     )
     assert await repo.count(user_id) == 1
 
+    row = await pool.fetchrow(
+        "select subject from public.emails where user_id = $1 and graph_message_id = $2",
+        user_id,
+        "msg-1",
+    )
+    assert row["subject"] == "Hello (edited)"
+
 
 @pytest.mark.asyncio
 async def test_emails_delete(pool, test_auth_user):
@@ -119,6 +126,13 @@ async def test_calendar_events_upsert_dedupes_by_graph_event_id(pool, test_auth_
     )
     assert await repo.count(user_id) == 1
 
+    row = await pool.fetchrow(
+        "select subject from public.calendar_events where user_id = $1 and graph_event_id = $2",
+        user_id,
+        "evt-1",
+    )
+    assert row["subject"] == "Standup (moved)"
+
 
 @pytest.mark.asyncio
 async def test_calendar_events_delete(pool, test_auth_user):
@@ -171,3 +185,10 @@ async def test_chat_messages_upsert_dedupes_by_graph_message_id(pool, test_auth_
         sent_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
     )
     assert await repo.count(user_id) == 1
+
+    row = await pool.fetchrow(
+        "select content from public.chat_messages where user_id = $1 and graph_message_id = $2",
+        user_id,
+        "chat-msg-1",
+    )
+    assert row["content"] == "Hey there (edited)"

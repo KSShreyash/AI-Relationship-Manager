@@ -178,3 +178,64 @@ async def test_sync_calendar_sets_not_available_on_403(pool, test_auth_user):
 
     state = await SyncStateRepository(pool).get(user_id, "calendar")
     assert state["status"] == "not_available"
+
+
+@pytest.mark.asyncio
+async def test_sync_calendar_resumes_from_stored_delta_link(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await SyncStateRepository(pool).upsert(
+        user_id, "calendar", "https://graph.microsoft.com/v1.0/calendarView/delta?$deltatoken=prev", "ok"
+    )
+
+    page = {
+        "items": [],
+        "next_link": None,
+        "delta_link": "https://graph.microsoft.com/v1.0/calendarView/delta?$deltatoken=next",
+    }
+    with patch("app.services.graph_sync.graph_client.fetch_delta_page", return_value=page) as mock_fetch:
+        await sync_calendar(pool, user_id, "access-token")
+
+    mock_fetch.assert_called_once_with(
+        "access-token", "https://graph.microsoft.com/v1.0/calendarView/delta?$deltatoken=prev"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_calendar_handles_removed_items(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await CalendarEventsRepository(pool).upsert(
+        user_id=user_id,
+        graph_event_id="evt-to-remove",
+        subject="Old",
+        organizer=None,
+        attendees=[],
+        start_time=None,
+        end_time=None,
+        is_online_meeting=False,
+        online_meeting_join_url=None,
+        body_text=None,
+    )
+
+    page = {
+        "items": [{"id": "evt-to-remove", "@removed": {"reason": "deleted"}}],
+        "next_link": None,
+        "delta_link": "https://graph.microsoft.com/v1.0/calendarView/delta?$deltatoken=abc",
+    }
+    with patch("app.services.graph_sync.graph_client.fetch_delta_page", return_value=page):
+        await sync_calendar(pool, user_id, "access-token")
+
+    assert await CalendarEventsRepository(pool).count(user_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_calendar_skips_when_already_not_available(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await SyncStateRepository(pool).upsert(user_id, "calendar", None, "not_available")
+
+    with patch("app.services.graph_sync.graph_client.fetch_delta_page") as mock_fetch:
+        await sync_calendar(pool, user_id, "access-token")
+
+    mock_fetch.assert_not_called()

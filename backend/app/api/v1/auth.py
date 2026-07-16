@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.core.deps import CurrentUser, get_current_user
 from app.core.security import encrypt_token
@@ -8,6 +8,7 @@ from app.db.session import get_pool
 from app.repositories.graph_tokens import GraphTokensRepository
 from app.repositories.profiles import ProfilesRepository
 from app.schemas.auth import GraphTokensIn
+from app.services.graph_sync import sync_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/graph-tokens", status_code=204)
 async def store_graph_tokens(
     body: GraphTokensIn,
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_current_user),
 ):
     pool = await get_pool()
@@ -30,3 +32,4 @@ async def store_graph_tokens(
         scopes=body.scopes,
     )
     await profiles.set_graph_connection_status(current_user.user_id, "connected")
+    background_tasks.add_task(sync_user, pool, current_user.user_id)

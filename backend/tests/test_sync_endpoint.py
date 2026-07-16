@@ -34,3 +34,38 @@ async def test_run_me_requires_authentication():
         response = await client.post("/api/sync/run/me")
 
     assert response.status_code in (401, 403)
+
+
+from app.core.config import settings
+from app.repositories.profiles import ProfilesRepository
+
+
+@pytest.mark.asyncio
+async def test_run_bulk_requires_correct_secret(pool):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/sync/run", headers={"X-Sync-Secret": "wrong"})
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_run_bulk_syncs_all_connected_users_with_isolation(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await ProfilesRepository(pool).set_graph_connection_status(user_id, "connected")
+
+    async def fake_sync_user(pool_arg, uid):
+        if uid == user_id:
+            raise RuntimeError("boom")
+
+    with patch("app.api.v1.sync.sync_user", side_effect=fake_sync_user):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/api/sync/run", headers={"X-Sync-Secret": settings.sync_secret}
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["failed"] >= 1

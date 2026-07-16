@@ -43,3 +43,8 @@ class ProfilesRepository:
             user_id,
             status,
         )
+
+    async def list_connected(self) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            "select * from public.profiles where graph_connection_status = 'connected'"
+        )

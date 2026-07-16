@@ -22,7 +22,7 @@ class ChatMessagesRepository:
             insert into public.chat_messages
                 (user_id, graph_chat_id, graph_message_id, from_user, content, sent_at, synced_at)
             values ($1, $2, $3, $4, $5, $6, now())
-            on conflict (user_id, graph_message_id) do update
+            on conflict (user_id, graph_chat_id, graph_message_id) do update
             set from_user = excluded.from_user,
                 content = excluded.content,
                 sent_at = excluded.sent_at,

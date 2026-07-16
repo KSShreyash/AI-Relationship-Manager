@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth, me
+from app.api.v1 import auth, me, sync
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +20,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(me.router)
+app.include_router(sync.router)
 
 
 @app.get("/health")

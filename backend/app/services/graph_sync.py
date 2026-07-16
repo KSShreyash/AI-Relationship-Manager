@@ -6,6 +6,7 @@ import asyncpg
 import httpx
 
 from app.repositories.calendar_events import CalendarEventsRepository
+from app.repositories.chat_messages import ChatMessagesRepository
 from app.repositories.emails import EmailsRepository
 from app.repositories.sync_state import SyncStateRepository
 from app.services import graph_client
@@ -126,3 +127,45 @@ async def sync_calendar(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: st
             await sync_state.upsert(user_id, "calendar", None, "not_available")
         else:
             raise
+
+
+async def sync_chat(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -> None:
+    sync_state = SyncStateRepository(pool)
+    messages = ChatMessagesRepository(pool)
+
+    state = await sync_state.get(user_id, "chat")
+    if state is not None and state["status"] == "not_available":
+        return
+
+    since = (
+        state["last_synced_at"]
+        if state and state["last_synced_at"]
+        else datetime.now(timezone.utc) - timedelta(days=BACKFILL_DAYS)
+    )
+
+    try:
+        chats = await graph_client.list_chats(access_token)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (400, 403):
+            await sync_state.upsert(user_id, "chat", None, "not_available")
+            return
+        raise
+
+    for chat in chats:
+        chat_id = chat["id"]
+        url = graph_client.chat_messages_url(chat_id, since)
+        while url:
+            page = await graph_client.fetch_chat_messages_page(access_token, url)
+            for item in page["items"]:
+                from_user = (item.get("from") or {}).get("user") or {}
+                await messages.upsert(
+                    user_id=user_id,
+                    graph_chat_id=chat_id,
+                    graph_message_id=item["id"],
+                    from_user=from_user.get("displayName"),
+                    content=(item.get("body") or {}).get("content"),
+                    sent_at=_parse_graph_datetime(item.get("createdDateTime")),
+                )
+            url = page["next_link"]
+
+    await sync_state.upsert(user_id, "chat", None, "ok")

@@ -6,10 +6,11 @@ import httpx
 import pytest
 
 from app.repositories.calendar_events import CalendarEventsRepository
+from app.repositories.chat_messages import ChatMessagesRepository
 from app.repositories.emails import EmailsRepository
 from app.repositories.profiles import ProfilesRepository
 from app.repositories.sync_state import SyncStateRepository
-from app.services.graph_sync import _parse_graph_datetime, sync_calendar, sync_mail
+from app.services.graph_sync import _parse_graph_datetime, sync_calendar, sync_chat, sync_mail
 
 
 def test_parse_graph_datetime_handles_z_suffix():
@@ -239,3 +240,57 @@ async def test_sync_calendar_skips_when_already_not_available(pool, test_auth_us
         await sync_calendar(pool, user_id, "access-token")
 
     mock_fetch.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_chat_upserts_messages_across_chats(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    chats = [{"id": "chat-1"}, {"id": "chat-2"}]
+    page = {
+        "items": [
+            {
+                "id": "chat-msg-1",
+                "from": {"user": {"displayName": "Alice"}},
+                "body": {"content": "Hey"},
+                "createdDateTime": "2026-07-01T12:00:00Z",
+            }
+        ],
+        "next_link": None,
+    }
+    with patch("app.services.graph_sync.graph_client.list_chats", return_value=chats), \
+         patch("app.services.graph_sync.graph_client.fetch_chat_messages_page", return_value=page):
+        await sync_chat(pool, user_id, "access-token")
+
+    assert await ChatMessagesRepository(pool).count(user_id) == 2  # one message per chat
+    state = await SyncStateRepository(pool).get(user_id, "chat")
+    assert state["status"] == "ok"
+    assert state["delta_link"] is None
+
+
+@pytest.mark.asyncio
+async def test_sync_chat_sets_not_available_when_list_chats_forbidden(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/me/chats")
+    error = httpx.HTTPStatusError("forbidden", request=request, response=httpx.Response(403, request=request))
+
+    with patch("app.services.graph_sync.graph_client.list_chats", side_effect=error), \
+         patch("app.services.graph_sync.graph_client.fetch_chat_messages_page") as mock_messages:
+        await sync_chat(pool, user_id, "access-token")
+
+    mock_messages.assert_not_called()
+    state = await SyncStateRepository(pool).get(user_id, "chat")
+    assert state["status"] == "not_available"
+
+
+@pytest.mark.asyncio
+async def test_sync_chat_skips_when_already_not_available(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await SyncStateRepository(pool).upsert(user_id, "chat", None, "not_available")
+
+    with patch("app.services.graph_sync.graph_client.list_chats") as mock_list:
+        await sync_chat(pool, user_id, "access-token")
+
+    mock_list.assert_not_called()

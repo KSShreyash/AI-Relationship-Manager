@@ -76,6 +76,47 @@ class ContactsRepository:
         )
         return row["id"]
 
+    async def get(
+        self, user_id: uuid.UUID, contact_id: uuid.UUID
+    ) -> asyncpg.Record | None:
+        return await self._pool.fetchrow(
+            "select * from public.contacts where id = $1 and user_id = $2",
+            contact_id,
+            user_id,
+        )
+
+    async def list_for_user(
+        self, user_id: uuid.UUID, search: str | None = None
+    ) -> list[asyncpg.Record]:
+        pattern = f"%{search}%" if search else None
+        return await self._pool.fetch(
+            """
+            select c.*,
+                   (
+                       select count(*) from public.action_items ai
+                       where ai.contact_id = c.id and ai.status = 'open'
+                   ) as open_action_item_count
+            from public.contacts c
+            where c.user_id = $1
+              and ($2::text is null or c.display_name ilike $2 or c.email_address ilike $2)
+            order by c.updated_at desc
+            """,
+            user_id,
+            pattern,
+        )
+
+    async def list_recent(self, user_id: uuid.UUID, limit: int) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            """
+            select * from public.contacts
+            where user_id = $1
+            order by updated_at desc
+            limit $2
+            """,
+            user_id,
+            limit,
+        )
+
     async def count(self, user_id: uuid.UUID) -> int:
         return await self._pool.fetchval(
             "select count(*) from public.contacts where user_id = $1",

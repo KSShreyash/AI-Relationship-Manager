@@ -110,3 +110,115 @@ async def _process_item(
                 f"update public.{table} set extracted_at = now() where id = $1",
                 source_id,
             )
+
+
+async def _extract_pending_emails(
+    pool: asyncpg.Pool, user_id: uuid.UUID, own_email: str | None, limit: int | None
+) -> int:
+    rows = await pool.fetch(
+        "select id, from_address, subject, body_text from public.emails "
+        "where user_id = $1 and extracted_at is null "
+        "order by received_at asc nulls last limit $2",
+        user_id,
+        limit if limit is not None else _UNBOUNDED,
+    )
+    processed = 0
+    for row in rows:
+        content = f"Subject: {row['subject'] or ''}\n\n{_strip_html(row['body_text']) or ''}"
+        try:
+            await _process_item(
+                pool, user_id, "email", row["id"], content,
+                [(row["from_address"], None)], own_email,
+            )
+        except Exception:
+            continue
+        processed += 1
+    return processed
+
+
+async def _extract_pending_calendar_events(
+    pool: asyncpg.Pool, user_id: uuid.UUID, own_email: str | None, limit: int | None
+) -> int:
+    import json
+
+    rows = await pool.fetch(
+        "select id, organizer, attendees, subject, body_text from public.calendar_events "
+        "where user_id = $1 and extracted_at is null "
+        "order by start_time asc nulls last limit $2",
+        user_id,
+        limit if limit is not None else _UNBOUNDED,
+    )
+    processed = 0
+    for row in rows:
+        content = f"Subject: {row['subject'] or ''}\n\n{_strip_html(row['body_text']) or ''}"
+
+        raw_people: list[tuple[str | None, str | None]] = []
+        if row["organizer"]:
+            raw_people.append((row["organizer"], None))
+        attendees = json.loads(row["attendees"]) if row["attendees"] else []
+        for attendee in attendees:
+            attendee_email = attendee.get("address")
+            attendee_name = attendee.get("name")
+            if attendee_email or attendee_name:
+                raw_people.append((attendee_email, attendee_name))
+
+        # Dedupe: the organizer is frequently also present in the attendees
+        # list, and would otherwise produce two participant refs for the
+        # same person - harmless (both resolve/upsert to the same contact
+        # row) but wasteful and confusing to include twice in the LLM
+        # prompt. Prefer whichever occurrence has a name.
+        by_email: dict[str, tuple[str | None, str | None]] = {}
+        no_email: list[tuple[str | None, str | None]] = []
+        for person_email, person_name in raw_people:
+            if person_email:
+                key = person_email.lower()
+                current = by_email.get(key)
+                if current is None or (person_name and not current[1]):
+                    by_email[key] = (person_email, person_name)
+            elif not any(existing_name == person_name for _, existing_name in no_email):
+                no_email.append((None, person_name))
+        participants = list(by_email.values()) + no_email
+
+        try:
+            await _process_item(pool, user_id, "calendar_event", row["id"], content, participants, own_email)
+        except Exception:
+            continue
+        processed += 1
+    return processed
+
+
+async def _extract_pending_chat_messages(
+    pool: asyncpg.Pool, user_id: uuid.UUID, own_email: str | None, limit: int | None
+) -> int:
+    rows = await pool.fetch(
+        "select id, from_user, content from public.chat_messages "
+        "where user_id = $1 and extracted_at is null "
+        "order by sent_at asc nulls last limit $2",
+        user_id,
+        limit if limit is not None else _UNBOUNDED,
+    )
+    processed = 0
+    for row in rows:
+        content = _strip_html(row["content"]) or ""
+        try:
+            await _process_item(
+                pool, user_id, "chat_message", row["id"], content,
+                [(None, row["from_user"])], own_email,
+            )
+        except Exception:
+            continue
+        processed += 1
+    return processed
+
+
+async def extract_user(pool: asyncpg.Pool, user_id: uuid.UUID, limit: int | None) -> None:
+    profile = await ProfilesRepository(pool).get(user_id)
+    own_email = profile["email"] if profile else None
+
+    remaining = limit
+    for scan_fn in (_extract_pending_emails, _extract_pending_calendar_events, _extract_pending_chat_messages):
+        if remaining is not None and remaining <= 0:
+            break
+        processed = await scan_fn(pool, user_id, own_email, remaining)
+        if remaining is not None:
+            remaining -= processed

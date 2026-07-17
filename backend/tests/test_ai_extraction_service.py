@@ -1,3 +1,4 @@
+import json as json_module
 import uuid
 from unittest.mock import patch
 
@@ -6,7 +7,7 @@ import pytest
 from app.repositories.action_items import ActionItemsRepository
 from app.repositories.contacts import ContactsRepository
 from app.repositories.profiles import ProfilesRepository
-from app.services.ai_extraction import _parse_due_date, _process_item, _strip_html
+from app.services.ai_extraction import _parse_due_date, _process_item, _strip_html, extract_user
 
 
 def test_strip_html_removes_tags_and_unescapes_entities():
@@ -168,3 +169,146 @@ async def test_process_item_rolls_back_on_action_item_failure(pool, test_auth_us
     assert await ActionItemsRepository(pool).count(user_id) == 0
     row = await pool.fetchrow("select extracted_at from public.emails where id = $1", source_id)
     assert row["extracted_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_user_processes_pending_email(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    row = await pool.fetchrow(
+        "insert into public.emails (user_id, graph_message_id, from_address, subject, body_text) "
+        "values ($1, $2, $3, $4, $5) returning id",
+        user_id, "msg-x", "irene@example.com", "Hello", "<p>Hi there</p>",
+    )
+
+    result = {"people": [{"ref": "p0", "notes": "Said hi"}], "action_items": []}
+    with patch("app.services.ai_extraction.openai_client.extract", return_value=result) as mock_extract:
+        await extract_user(pool, user_id, limit=10)
+
+    mock_extract.assert_called_once()
+    content_arg = mock_extract.call_args[0][0]
+    assert "<p>" not in content_arg  # HTML was stripped before reaching the LLM
+    assert await ContactsRepository(pool).count(user_id) == 1
+
+    updated = await pool.fetchrow("select extracted_at from public.emails where id = $1", row["id"])
+    assert updated["extracted_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_extract_user_processes_calendar_event_with_multiple_attendees(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await pool.execute(
+        "insert into public.calendar_events (user_id, graph_event_id, organizer, attendees, subject, body_text) "
+        "values ($1, $2, $3, $4::jsonb, $5, $6)",
+        user_id, "evt-x", "jane@example.com",
+        json_module.dumps([{"address": "jane@example.com", "name": "Jane"}, {"address": "kyle@example.com", "name": "Kyle"}]),
+        "Sync", "Weekly sync",
+    )
+
+    result = {"people": [], "action_items": []}
+    with patch("app.services.ai_extraction.openai_client.extract", return_value=result) as mock_extract:
+        await extract_user(pool, user_id, limit=10)
+
+    mock_extract.assert_called_once()
+    participants_arg = mock_extract.call_args[0][1]
+    # organizer (jane) also appears in attendees - must be deduped to one
+    # participant ref, not two, even though the raw data mentions her twice.
+    assert len(participants_arg) == 2
+    jane = next(p for p in participants_arg if p["email"] == "jane@example.com")
+    assert jane["name"] == "Jane"
+    assert any(p["email"] == "kyle@example.com" for p in participants_arg)
+
+
+@pytest.mark.asyncio
+async def test_extract_user_processes_chat_message_by_display_name(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await pool.execute(
+        "insert into public.chat_messages (user_id, graph_chat_id, graph_message_id, from_user, content) "
+        "values ($1, $2, $3, $4, $5)",
+        user_id, "chat-1", "cm-1", "Laura", "Can you send that file?",
+    )
+
+    result = {"people": [{"ref": "p0", "notes": "Asked for a file"}], "action_items": []}
+    with patch("app.services.ai_extraction.openai_client.extract", return_value=result):
+        await extract_user(pool, user_id, limit=10)
+
+    contact = await ContactsRepository(pool).get_by_display_name(user_id, "Laura")
+    assert contact is not None
+
+
+@pytest.mark.asyncio
+async def test_extract_user_respects_limit_across_tables(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    for i in range(3):
+        await pool.execute(
+            "insert into public.emails (user_id, graph_message_id, from_address, subject, body_text) "
+            "values ($1, $2, $3, $4, $5)",
+            user_id, f"msg-limit-{i}", f"person{i}@example.com", "Hi", "content",
+        )
+
+    result = {"people": [], "action_items": []}
+    with patch("app.services.ai_extraction.openai_client.extract", return_value=result) as mock_extract:
+        await extract_user(pool, user_id, limit=2)
+
+    assert mock_extract.call_count == 2
+    remaining = await pool.fetchval(
+        "select count(*) from public.emails where user_id = $1 and extracted_at is null", user_id
+    )
+    assert remaining == 1
+
+
+@pytest.mark.asyncio
+async def test_extract_user_unbounded_processes_everything(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    for i in range(3):
+        await pool.execute(
+            "insert into public.emails (user_id, graph_message_id, from_address, subject, body_text) "
+            "values ($1, $2, $3, $4, $5)",
+            user_id, f"msg-unbounded-{i}", f"person{i}@example.com", "Hi", "content",
+        )
+
+    result = {"people": [], "action_items": []}
+    with patch("app.services.ai_extraction.openai_client.extract", return_value=result):
+        await extract_user(pool, user_id, limit=None)
+
+    remaining = await pool.fetchval(
+        "select count(*) from public.emails where user_id = $1 and extracted_at is null", user_id
+    )
+    assert remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_extract_user_isolates_per_item_failures(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await pool.execute(
+        "insert into public.emails (user_id, graph_message_id, from_address, subject, body_text) "
+        "values ($1, $2, $3, $4, $5)",
+        user_id, "msg-fail", "fail@example.com", "Hi", "content",
+    )
+    await pool.execute(
+        "insert into public.emails (user_id, graph_message_id, from_address, subject, body_text) "
+        "values ($1, $2, $3, $4, $5)",
+        user_id, "msg-ok", "ok@example.com", "Hi", "content",
+    )
+
+    async def fake_extract(content, participants):
+        if participants[0]["email"] == "fail@example.com":
+            raise RuntimeError("boom")
+        return {"people": [], "action_items": []}
+
+    with patch("app.services.ai_extraction.openai_client.extract", side_effect=fake_extract):
+        await extract_user(pool, user_id, limit=10)
+
+    failed_row = await pool.fetchrow(
+        "select extracted_at from public.emails where user_id = $1 and graph_message_id = $2", user_id, "msg-fail"
+    )
+    ok_row = await pool.fetchrow(
+        "select extracted_at from public.emails where user_id = $1 and graph_message_id = $2", user_id, "msg-ok"
+    )
+    assert failed_row["extracted_at"] is None
+    assert ok_row["extracted_at"] is not None

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     ms_authority: str = "https://login.microsoftonline.com/common"
     cors_allow_origins: str = "http://localhost:3000"
     sync_secret: str
+    openai_api_key: str
+    extraction_batch_limit: int = 50
 
 
 settings = Settings()

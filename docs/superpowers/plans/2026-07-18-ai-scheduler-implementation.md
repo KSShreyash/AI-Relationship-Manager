@@ -154,7 +154,7 @@ async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
 
 This is byte-for-byte the same logic as before — only the token-fetch/refresh lines at the top changed from inline code to a call to `get_valid_access_token`, and the mid-loop refresh call from `_refresh_and_persist` to `refresh_and_persist`.
 
-- [ ] **Step 3: Update the 5 existing test patches**
+- [ ] **Step 3: Update the 4 existing test patches**
 
 In `backend/tests/test_graph_sync_service.py`, these tests currently patch `app.services.graph_sync.refresh_access_token` — that name no longer exists in `graph_sync.py`'s namespace after Step 2, so every occurrence must change to `app.services.graph_tokens_service.refresh_access_token`:
 

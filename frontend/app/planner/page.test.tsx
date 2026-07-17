@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { apiFetchMock } = vi.hoisted(() => ({
@@ -92,5 +92,32 @@ describe('PlannerPage', () => {
 
     await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
     expect(screen.getByText('Overdue task')).toBeInTheDocument()
+  })
+
+  it('shows the Later group, the Completed section, and a contact name when present', async () => {
+    const EXTENDED_ITEMS = [
+      { id: '4', text: 'Later task', direction: 'mine', status: 'open', due_date: '2026-08-01', contact: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
+      { id: '5', text: 'Done task', direction: 'mine', status: 'done', due_date: '2026-07-15', contact: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
+      { id: '6', text: 'Contact task', direction: 'theirs', status: 'open', due_date: null, contact: { id: 'c1', display_name: 'Dana', email_address: 'dana@example.com' }, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
+    ]
+    apiFetchMock.mockImplementation(() => Promise.resolve(jsonResponse(EXTENDED_ITEMS)))
+
+    render(<PlannerPage />)
+
+    await waitFor(() => expect(screen.getByText('Later task')).toBeInTheDocument())
+
+    const laterHeading = screen.getByRole('heading', { name: 'Later' })
+    expect(within(laterHeading.nextElementSibling as HTMLElement).getByText('Later task')).toBeInTheDocument()
+
+    expect(screen.getByText(/Dana/)).toBeInTheDocument()
+
+    expect(screen.queryByText('Done task')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Completed' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /show completed/i }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Completed' })).toBeInTheDocument())
+    const completedHeading = screen.getByRole('heading', { name: 'Completed' })
+    expect(within(completedHeading.nextElementSibling as HTMLElement).getByText('Done task')).toBeInTheDocument()
   })
 })

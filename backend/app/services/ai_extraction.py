@@ -11,7 +11,6 @@ from app.repositories.contacts import ContactsRepository
 from app.repositories.profiles import ProfilesRepository
 from app.services import openai_client
 
-EXTRACTION_BATCH_LIMIT = 50
 _UNBOUNDED = 1_000_000
 
 _TABLES = {

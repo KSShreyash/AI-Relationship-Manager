@@ -261,6 +261,43 @@ async def test_extract_user_respects_limit_across_tables(pool, test_auth_user):
 
 
 @pytest.mark.asyncio
+async def test_extract_user_carries_remaining_budget_into_next_table(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    for i in range(2):
+        await pool.execute(
+            "insert into public.emails (user_id, graph_message_id, from_address, subject, body_text) "
+            "values ($1, $2, $3, $4, $5)",
+            user_id, f"msg-budget-{i}", f"person{i}@example.com", "Hi", "content",
+        )
+    for i in range(2):
+        await pool.execute(
+            "insert into public.chat_messages (user_id, graph_chat_id, graph_message_id, from_user, content) "
+            "values ($1, $2, $3, $4, $5)",
+            user_id, "chat-budget", f"chat-msg-budget-{i}", f"Chatter{i}", "hey",
+        )
+
+    result = {"people": [], "action_items": []}
+    with patch("app.services.ai_extraction.openai_client.extract", return_value=result) as mock_extract:
+        # limit=3: exactly enough to process both emails (2) plus one chat
+        # message (1), proving the remaining budget (1, not the original 3)
+        # is what actually gets passed into the chat scan function - a
+        # regression that re-passed the frozen limit=3 into the chat scan
+        # would process both chat messages instead of just one.
+        await extract_user(pool, user_id, limit=3)
+
+    assert mock_extract.call_count == 3
+    emails_pending = await pool.fetchval(
+        "select count(*) from public.emails where user_id = $1 and extracted_at is null", user_id
+    )
+    chats_pending = await pool.fetchval(
+        "select count(*) from public.chat_messages where user_id = $1 and extracted_at is null", user_id
+    )
+    assert emails_pending == 0
+    assert chats_pending == 1
+
+
+@pytest.mark.asyncio
 async def test_extract_user_unbounded_processes_everything(pool, test_auth_user):
     user_id, email = test_auth_user
     await ProfilesRepository(pool).upsert(user_id, email)

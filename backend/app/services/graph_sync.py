@@ -4,19 +4,15 @@ from datetime import datetime, timedelta, timezone
 
 import asyncpg
 import httpx
-from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
-from app.core.security import decrypt_token, encrypt_token
 from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.chat_messages import ChatMessagesRepository
 from app.repositories.emails import EmailsRepository
-from app.repositories.graph_tokens import GraphTokensRepository
-from app.repositories.profiles import ProfilesRepository
 from app.repositories.sync_state import SyncStateRepository
 from app.services import graph_client
 from app.services.ai_extraction import extract_user
-from app.services.graph_client import GraphRefreshError, refresh_access_token
+from app.services.graph_tokens_service import get_valid_access_token, refresh_and_persist
 
 BACKFILL_DAYS = 30
 CALENDAR_LOOKAHEAD_DAYS = 90
@@ -186,46 +182,10 @@ async def sync_chat(pool: asyncpg.Pool, user_id: uuid.UUID, access_token: str) -
     await sync_state.upsert(user_id, "chat", None, "ok")
 
 
-async def _refresh_and_persist(pool: asyncpg.Pool, user_id: uuid.UUID) -> str | None:
-    tokens_repo = GraphTokensRepository(pool)
-    profiles_repo = ProfilesRepository(pool)
-
-    token_row = await tokens_repo.get(user_id)
-    if token_row is None:
-        return None
-
-    refresh_token = decrypt_token(token_row["encrypted_refresh_token"])
-    try:
-        refreshed = await run_in_threadpool(
-            refresh_access_token, refresh_token, scopes=token_row["scopes"]
-        )
-    except GraphRefreshError:
-        await profiles_repo.set_graph_connection_status(user_id, "needs_reauth")
-        return None
-
-    await tokens_repo.upsert(
-        user_id=user_id,
-        encrypted_access_token=encrypt_token(refreshed["access_token"]),
-        encrypted_refresh_token=encrypt_token(refreshed["refresh_token"]),
-        access_token_expires_at=refreshed["expires_at"],
-        scopes=token_row["scopes"],
-    )
-    return refreshed["access_token"]
-
-
 async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
-    tokens_repo = GraphTokensRepository(pool)
-
-    token_row = await tokens_repo.get(user_id)
-    if token_row is None:
+    access_token = await get_valid_access_token(pool, user_id)
+    if access_token is None:
         return
-
-    access_token = decrypt_token(token_row["encrypted_access_token"])
-
-    if token_row["access_token_expires_at"] <= datetime.now(timezone.utc):
-        access_token = await _refresh_and_persist(pool, user_id)
-        if access_token is None:
-            return
 
     errors: list[Exception] = []
     for sync_fn in (sync_mail, sync_calendar, sync_chat):
@@ -233,7 +193,7 @@ async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
             await sync_fn(pool, user_id, access_token)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 401:
-                access_token = await _refresh_and_persist(pool, user_id)
+                access_token = await refresh_and_persist(pool, user_id)
                 if access_token is None:
                     return
                 try:

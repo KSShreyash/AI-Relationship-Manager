@@ -35,6 +35,75 @@ class ActionItemsRepository:
             source_id,
         )
 
+    async def list_for_contact(
+        self, user_id: uuid.UUID, contact_id: uuid.UUID
+    ) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            """
+            select * from public.action_items
+            where user_id = $1 and contact_id = $2
+            order by created_at desc
+            """,
+            user_id,
+            contact_id,
+        )
+
+    async def list_for_user(
+        self,
+        user_id: uuid.UUID,
+        direction: str | None = None,
+        include_done: bool = False,
+    ) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            """
+            select ai.*,
+                   c.display_name as contact_display_name,
+                   c.email_address as contact_email_address
+            from public.action_items ai
+            left join public.contacts c on c.id = ai.contact_id
+            where ai.user_id = $1
+              and ($2::text is null or ai.direction = $2)
+              and ($3::boolean or ai.status = 'open')
+            order by ai.due_date asc nulls last, ai.created_at asc
+            """,
+            user_id,
+            direction,
+            include_done,
+        )
+
+    async def update_status(
+        self, user_id: uuid.UUID, item_id: uuid.UUID, status: str
+    ) -> asyncpg.Record | None:
+        return await self._pool.fetchrow(
+            """
+            update public.action_items
+            set status = $3, updated_at = now()
+            where id = $1 and user_id = $2
+            returning *
+            """,
+            item_id,
+            user_id,
+            status,
+        )
+
+    async def count_open(self, user_id: uuid.UUID) -> int:
+        return await self._pool.fetchval(
+            "select count(*) from public.action_items where user_id = $1 and status = 'open'",
+            user_id,
+        )
+
+    async def list_recent(self, user_id: uuid.UUID, limit: int) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            """
+            select * from public.action_items
+            where user_id = $1
+            order by created_at desc
+            limit $2
+            """,
+            user_id,
+            limit,
+        )
+
     async def count(self, user_id: uuid.UUID) -> int:
         return await self._pool.fetchval(
             "select count(*) from public.action_items where user_id = $1",

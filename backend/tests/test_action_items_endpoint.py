@@ -191,3 +191,61 @@ async def test_patch_action_item_404_for_missing_item(pool, test_auth_user):
         assert response.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_patch_action_item_404_for_item_owned_by_another_user(pool, test_auth_user, test_auth_user_2):
+    user_id, email = test_auth_user
+    other_user_id, other_email = test_auth_user_2
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await ProfilesRepository(pool).upsert(other_user_id, other_email)
+    action_items = ActionItemsRepository(pool)
+    await action_items.insert(
+        user_id=other_user_id, contact_id=None, text="Other user's item", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    item_row = await pool.fetchrow(
+        "select id from public.action_items where user_id = $1", other_user_id
+    )
+    _override_auth(user_id, email)
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.patch(
+                f"/api/action-items/{item_row['id']}", json={"status": "done"}
+            )
+
+        assert response.status_code == 404
+        assert await action_items.count_open(other_user_id) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_action_items_only_returns_callers_own_items(pool, test_auth_user, test_auth_user_2):
+    user_id, email = test_auth_user
+    other_user_id, other_email = test_auth_user_2
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await ProfilesRepository(pool).upsert(other_user_id, other_email)
+    action_items = ActionItemsRepository(pool)
+    await action_items.insert(
+        user_id=user_id, contact_id=None, text="Mine own item", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    await action_items.insert(
+        user_id=other_user_id, contact_id=None, text="Other user's item", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    _override_auth(user_id, email)
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/action-items")
+
+        assert response.status_code == 200
+        texts = {row["text"] for row in response.json()}
+        assert texts == {"Mine own item"}
+    finally:
+        app.dependency_overrides.clear()

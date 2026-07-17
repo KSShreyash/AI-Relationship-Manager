@@ -536,3 +536,68 @@ async def test_sync_user_isolates_resource_failures(pool, test_auth_user):
 
     mock_calendar.assert_called_once_with(pool, user_id, "valid-access")
     mock_chat.assert_called_once_with(pool, user_id, "valid-access")
+
+
+@pytest.mark.asyncio
+async def test_sync_user_runs_extraction_after_sync(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+
+    with patch("app.services.graph_sync.sync_mail"), \
+         patch("app.services.graph_sync.sync_calendar"), \
+         patch("app.services.graph_sync.sync_chat"), \
+         patch("app.services.graph_sync.extract_user") as mock_extract_user:
+        await sync_user(pool, user_id)
+
+    mock_extract_user.assert_called_once()
+    call_args = mock_extract_user.call_args[0]
+    assert call_args[0] is pool
+    assert call_args[1] == user_id
+
+
+@pytest.mark.asyncio
+async def test_sync_user_extraction_failure_does_not_propagate(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+
+    with patch("app.services.graph_sync.sync_mail"), \
+         patch("app.services.graph_sync.sync_calendar"), \
+         patch("app.services.graph_sync.sync_chat"), \
+         patch("app.services.graph_sync.extract_user", side_effect=RuntimeError("extraction boom")):
+        await sync_user(pool, user_id)  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_sync_user_still_attempts_extraction_when_a_resource_sync_fails(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+
+    with patch("app.services.graph_sync.sync_mail", side_effect=RuntimeError("mail boom")), \
+         patch("app.services.graph_sync.sync_calendar"), \
+         patch("app.services.graph_sync.sync_chat"), \
+         patch("app.services.graph_sync.extract_user") as mock_extract_user:
+        with pytest.raises(RuntimeError, match="mail boom"):
+            await sync_user(pool, user_id)
+
+    mock_extract_user.assert_called_once()

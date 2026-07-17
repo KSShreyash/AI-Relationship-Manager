@@ -6,6 +6,7 @@ import asyncpg
 import httpx
 from starlette.concurrency import run_in_threadpool
 
+from app.core.config import settings
 from app.core.security import decrypt_token, encrypt_token
 from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.chat_messages import ChatMessagesRepository
@@ -14,6 +15,7 @@ from app.repositories.graph_tokens import GraphTokensRepository
 from app.repositories.profiles import ProfilesRepository
 from app.repositories.sync_state import SyncStateRepository
 from app.services import graph_client
+from app.services.ai_extraction import extract_user
 from app.services.graph_client import GraphRefreshError, refresh_access_token
 
 BACKFILL_DAYS = 30
@@ -242,6 +244,11 @@ async def sync_user(pool: asyncpg.Pool, user_id: uuid.UUID) -> None:
                 errors.append(exc)
         except Exception as exc:
             errors.append(exc)
+
+    try:
+        await extract_user(pool, user_id, settings.extraction_batch_limit)
+    except Exception:
+        pass
 
     if errors:
         raise errors[0]

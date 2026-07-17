@@ -82,3 +82,29 @@ async def test_dashboard_activity_capped_at_20(pool, test_auth_user):
         assert len(response.json()["activity"]) == 20
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_activity_caps_at_20_across_combined_sources(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    contacts = ContactsRepository(pool)
+    action_items = ActionItemsRepository(pool)
+
+    for i in range(15):
+        await contacts.upsert_by_email(user_id, f"person{i}@example.com", f"Person {i}", None)
+    for i in range(15):
+        await action_items.insert(
+            user_id=user_id, contact_id=None, text=f"Item {i}", direction="mine",
+            due_date=None, source_type="email", source_id=uuid.uuid4(),
+        )
+    _override_auth(user_id, email)
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/dashboard")
+
+        assert len(response.json()["activity"]) == 20
+    finally:
+        app.dependency_overrides.clear()

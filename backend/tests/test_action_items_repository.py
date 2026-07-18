@@ -311,3 +311,86 @@ async def test_set_scheduled_calendar_event_id_does_not_overwrite_a_winning_conc
         "select scheduled_calendar_event_id from public.action_items where id = $1", item_row["id"]
     )
     assert unchanged["scheduled_calendar_event_id"] == first_event_id
+
+
+@pytest.mark.asyncio
+async def test_search_ranks_more_term_occurrences_higher(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    action_items = ActionItemsRepository(pool)
+    await action_items.insert(
+        user_id=user_id, contact_id=None, text="Discuss the roadmap once", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    await action_items.insert(
+        user_id=user_id, contact_id=None,
+        text="Roadmap roadmap roadmap - the roadmap is the main topic, always roadmap",
+        direction="mine", due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+
+    results = await action_items.search(user_id, "roadmap", 20)
+
+    assert len(results) == 2
+    assert "always roadmap" in results[0]["text"]
+    assert "once" in results[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_search_embeds_contact_or_null(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    contacts = ContactsRepository(pool)
+    action_items = ActionItemsRepository(pool)
+    contact_id = await contacts.upsert_by_email(user_id, "gina@example.com", "Gina", None)
+    await action_items.insert(
+        user_id=user_id, contact_id=contact_id, text="Unique term alpha with contact",
+        direction="mine", due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    await action_items.insert(
+        user_id=user_id, contact_id=None, text="Unique term alpha without contact",
+        direction="mine", due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+
+    results = await action_items.search(user_id, "alpha", 20)
+
+    by_text = {row["text"]: row for row in results}
+    assert by_text["Unique term alpha with contact"]["contact_display_name"] == "Gina"
+    assert by_text["Unique term alpha without contact"]["contact_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_search_excludes_other_users_action_items(pool, test_auth_user, test_auth_user_2):
+    user_id, email = test_auth_user
+    other_user_id, other_email = test_auth_user_2
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await ProfilesRepository(pool).upsert(other_user_id, other_email)
+    action_items = ActionItemsRepository(pool)
+    await action_items.insert(
+        user_id=user_id, contact_id=None, text="Findable mine item",
+        direction="mine", due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    await action_items.insert(
+        user_id=other_user_id, contact_id=None, text="Findable theirs item",
+        direction="mine", due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+
+    results = await action_items.search(user_id, "findable", 20)
+
+    assert len(results) == 1
+    assert results[0]["text"] == "Findable mine item"
+
+
+@pytest.mark.asyncio
+async def test_search_respects_limit(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    action_items = ActionItemsRepository(pool)
+    for i in range(25):
+        await action_items.insert(
+            user_id=user_id, contact_id=None, text=f"Cappeditem number {i}",
+            direction="mine", due_date=None, source_type="email", source_id=uuid.uuid4(),
+        )
+
+    results = await action_items.search(user_id, "cappeditem", 20)
+
+    assert len(results) == 20

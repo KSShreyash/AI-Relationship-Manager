@@ -84,3 +84,68 @@ async def test_list_recent_respects_limit(pool, test_auth_user):
 
     rows = await repo.list_recent(user_id, limit=2)
     assert len(rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_search_ranks_more_term_occurrences_higher(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    repo = ContactsRepository(pool)
+    await repo.upsert_by_email(
+        user_id, "alice@example.com", "Alice Johnson", "Talked about budget planning once"
+    )
+    await repo.upsert_by_email(
+        user_id, "bob@example.com", "Bob Smith",
+        "Budget is the main topic, budget budget budget, always about the budget",
+    )
+
+    results = await repo.search(user_id, "budget", 20)
+
+    assert len(results) == 2
+    assert results[0]["display_name"] == "Bob Smith"
+    assert results[1]["display_name"] == "Alice Johnson"
+
+
+@pytest.mark.asyncio
+async def test_search_matches_display_name_email_and_notes(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    repo = ContactsRepository(pool)
+    await repo.upsert_by_email(user_id, "zephyr@example.com", "Regular Name", None)
+    await repo.upsert_by_email(user_id, "regular@example.com", "Zephyr Name", None)
+    await repo.upsert_by_email(user_id, "regular2@example.com", "Regular Name Two", "mentions zephyr here")
+
+    results = await repo.search(user_id, "zephyr", 20)
+
+    assert {row["email_address"] for row in results} == {
+        "zephyr@example.com", "regular@example.com", "regular2@example.com",
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_excludes_other_users_contacts(pool, test_auth_user, test_auth_user_2):
+    user_id, email = test_auth_user
+    other_user_id, other_email = test_auth_user_2
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await ProfilesRepository(pool).upsert(other_user_id, other_email)
+    repo = ContactsRepository(pool)
+    await repo.upsert_by_email(user_id, "mine@example.com", "Findable Mine", None)
+    await repo.upsert_by_email(other_user_id, "theirs@example.com", "Findable Theirs", None)
+
+    results = await repo.search(user_id, "findable", 20)
+
+    assert len(results) == 1
+    assert results[0]["email_address"] == "mine@example.com"
+
+
+@pytest.mark.asyncio
+async def test_search_respects_limit(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    repo = ContactsRepository(pool)
+    for i in range(25):
+        await repo.upsert_by_email(user_id, f"person{i}@example.com", f"Capped Person {i}", None)
+
+    results = await repo.search(user_id, "capped", 20)
+
+    assert len(results) == 20

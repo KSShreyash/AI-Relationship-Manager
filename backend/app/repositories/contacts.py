@@ -122,3 +122,32 @@ class ContactsRepository:
             "select count(*) from public.contacts where user_id = $1",
             user_id,
         )
+
+    async def search(
+        self, user_id: uuid.UUID, query: str, limit: int
+    ) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            """
+            select *,
+                   ts_rank(
+                       to_tsvector('english',
+                           coalesce(display_name, '') || ' ' ||
+                           replace(coalesce(email_address, ''), '@', ' ') || ' ' ||
+                           coalesce(notes, '')
+                       ),
+                       websearch_to_tsquery('english', $2)
+                   ) as rank
+            from public.contacts
+            where user_id = $1
+              and to_tsvector('english',
+                      coalesce(display_name, '') || ' ' ||
+                      replace(coalesce(email_address, ''), '@', ' ') || ' ' ||
+                      coalesce(notes, '')
+                  ) @@ websearch_to_tsquery('english', $2)
+            order by rank desc
+            limit $3
+            """,
+            user_id,
+            query,
+            limit,
+        )

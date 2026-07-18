@@ -158,3 +158,24 @@ class ActionItemsRepository:
             "select count(*) from public.action_items where user_id = $1",
             user_id,
         )
+
+    async def search(
+        self, user_id: uuid.UUID, query: str, limit: int
+    ) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            """
+            select ai.*,
+                   c.display_name as contact_display_name,
+                   c.email_address as contact_email_address,
+                   ts_rank(to_tsvector('english', ai.text), websearch_to_tsquery('english', $2)) as rank
+            from public.action_items ai
+            left join public.contacts c on c.id = ai.contact_id
+            where ai.user_id = $1
+              and to_tsvector('english', ai.text) @@ websearch_to_tsquery('english', $2)
+            order by rank desc
+            limit $3
+            """,
+            user_id,
+            query,
+            limit,
+        )

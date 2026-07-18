@@ -32,6 +32,7 @@ export default function RootLayout({
           <a href="/dashboard">Dashboard</a>
           <a href="/contacts">Contacts</a>
           <a href="/planner">Planner</a>
+          <a href="/search">Search</a>
         </nav>
         <div className="flex-1">{children}</div>
       </body>

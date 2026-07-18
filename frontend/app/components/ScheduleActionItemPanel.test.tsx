@@ -85,6 +85,31 @@ describe('ScheduleActionItemPanel', () => {
     })
   })
 
+  it('disables the slot buttons while a schedule request is in flight', async () => {
+    let resolvePost: (value: Response) => void = () => {}
+    const postPromise = new Promise<Response>((resolve) => {
+      resolvePost = resolve
+    })
+    apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return postPromise
+      return Promise.resolve(jsonResponse([{ start: '2026-07-20T14:00:00Z', end: '2026-07-20T14:30:00Z' }]))
+    })
+
+    render(
+      <ScheduleActionItemPanel
+        itemId="item-1" scheduledCalendarEventId={null} scheduledStartTime={null}
+        contact={CONTACT} onScheduled={vi.fn()}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /schedule/i }))
+    const slotButton = await screen.findByRole('button', { name: /2026/i })
+    fireEvent.click(slotButton)
+
+    await waitFor(() => expect(slotButton).toBeDisabled())
+
+    resolvePost(jsonResponse({ status: 'ok' }))
+  })
+
   it('shows an inline error and keeps the panel open when confirming fails', async () => {
     apiFetchMock.mockImplementation((path: string, init?: RequestInit) => {
       if (init?.method === 'POST') return Promise.resolve(new Response(null, { status: 502 }))

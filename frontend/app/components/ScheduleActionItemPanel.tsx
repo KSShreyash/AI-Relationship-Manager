@@ -26,6 +26,7 @@ export default function ScheduleActionItemPanel({
   const [slots, setSlots] = useState<Slot[] | null>(null)
   const [onlineMeeting, setOnlineMeeting] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   if (!contact) return null
 
@@ -51,6 +52,7 @@ export default function ScheduleActionItemPanel({
 
   async function confirm(slot: Slot) {
     setError(null)
+    setSubmitting(true)
     const response = await apiFetch(`/api/action-items/${itemId}/schedule`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -58,8 +60,10 @@ export default function ScheduleActionItemPanel({
     })
     if (!response.ok) {
       setError('Could not schedule that meeting. Please try again.')
+      setSubmitting(false)
       return
     }
+    setSubmitting(false)
     setOpen(false)
     onScheduled()
   }
@@ -86,13 +90,14 @@ export default function ScheduleActionItemPanel({
               type="checkbox"
               checked={onlineMeeting}
               onChange={(e) => setOnlineMeeting(e.target.checked)}
+              disabled={submitting}
             />
             {' '}Online meeting
           </label>
           <ul>
             {slots.map((slot) => (
               <li key={slot.start}>
-                <button onClick={() => confirm(slot)}>
+                <button onClick={() => confirm(slot)} disabled={submitting}>
                   {new Date(slot.start).toLocaleString()}
                 </button>
               </li>

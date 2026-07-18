@@ -104,7 +104,7 @@ class ActionItemsRepository:
             with updated as (
                 update public.action_items
                 set scheduled_calendar_event_id = $3
-                where id = $1 and user_id = $2
+                where id = $1 and user_id = $2 and scheduled_calendar_event_id is null
                 returning *
             )
             select updated.*,

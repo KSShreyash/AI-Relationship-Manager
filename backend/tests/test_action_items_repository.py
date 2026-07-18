@@ -245,3 +245,69 @@ async def test_set_scheduled_calendar_event_id_returns_none_for_foreign_item(poo
     result = await action_items.set_scheduled_calendar_event_id(user_id, foreign_item["id"], calendar_event_id)
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_deleting_scheduled_calendar_event_nulls_out_the_action_item_pointer(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    contacts = ContactsRepository(pool)
+    calendar_events = CalendarEventsRepository(pool)
+    action_items = ActionItemsRepository(pool)
+    contact_id = await contacts.upsert_by_email(user_id, "gina@example.com", "Gina", None)
+    await action_items.insert(
+        user_id=user_id, contact_id=contact_id, text="Call Gina", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    item_row = await pool.fetchrow("select id from public.action_items where user_id = $1", user_id)
+    calendar_event_id = await calendar_events.upsert(
+        user_id=user_id, graph_event_id="evt-removed", subject="Call Gina", organizer=None,
+        attendees=[], start_time=datetime(2026, 7, 20, 14, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 7, 20, 14, 30, tzinfo=timezone.utc),
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+    await action_items.set_scheduled_calendar_event_id(user_id, item_row["id"], calendar_event_id)
+
+    # Simulates the delta-sync "@removed" path: deleting the calendar event must not raise
+    # a ForeignKeyViolationError now that the FK is ON DELETE SET NULL.
+    await calendar_events.delete(user_id, "evt-removed")
+
+    refreshed = await action_items.get(user_id, item_row["id"])
+    assert refreshed["scheduled_calendar_event_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_set_scheduled_calendar_event_id_does_not_overwrite_a_winning_concurrent_write(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    contacts = ContactsRepository(pool)
+    calendar_events = CalendarEventsRepository(pool)
+    action_items = ActionItemsRepository(pool)
+    contact_id = await contacts.upsert_by_email(user_id, "gina@example.com", "Gina", None)
+    await action_items.insert(
+        user_id=user_id, contact_id=contact_id, text="Call Gina", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    item_row = await pool.fetchrow("select id from public.action_items where user_id = $1", user_id)
+    first_event_id = await calendar_events.upsert(
+        user_id=user_id, graph_event_id="evt-first", subject="Call Gina", organizer=None,
+        attendees=[], start_time=datetime(2026, 7, 20, 14, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 7, 20, 14, 30, tzinfo=timezone.utc),
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+    second_event_id = await calendar_events.upsert(
+        user_id=user_id, graph_event_id="evt-second", subject="Call Gina", organizer=None,
+        attendees=[], start_time=datetime(2026, 7, 20, 15, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 7, 20, 15, 30, tzinfo=timezone.utc),
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+
+    first_result = await action_items.set_scheduled_calendar_event_id(user_id, item_row["id"], first_event_id)
+    second_result = await action_items.set_scheduled_calendar_event_id(user_id, item_row["id"], second_event_id)
+
+    assert first_result["scheduled_calendar_event_id"] == first_event_id
+    assert second_result is None
+    unchanged = await pool.fetchrow(
+        "select scheduled_calendar_event_id from public.action_items where id = $1", item_row["id"]
+    )
+    assert unchanged["scheduled_calendar_event_id"] == first_event_id

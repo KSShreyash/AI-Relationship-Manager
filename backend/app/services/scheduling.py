@@ -118,5 +118,12 @@ async def create_meeting(
             updated_item = await ActionItemsRepository(pool).set_scheduled_calendar_event_id(
                 user_id, item_id, calendar_event_id, conn=conn,
             )
+            if updated_item is None:
+                # Another concurrent request already won the race and set the pointer
+                # first. The Graph event above was still created and can't be undone
+                # here, but we must not silently overwrite the winning request's local
+                # pointer. Signal the caller so it can return a 409 instead of a false
+                # success.
+                return None
 
     return updated_item

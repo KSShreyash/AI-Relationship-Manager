@@ -10,3 +10,4 @@ pytest>=8.3
 pytest-asyncio>=0.24
 respx>=0.21
 openai>=1.50
+tzdata

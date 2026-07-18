@@ -21,8 +21,10 @@ class CalendarEventsRepository:
         is_online_meeting: bool,
         online_meeting_join_url: str | None,
         body_text: str | None,
-    ) -> None:
-        await self._pool.execute(
+        conn: asyncpg.Connection | None = None,
+    ) -> uuid.UUID:
+        executor = conn or self._pool
+        row = await executor.fetchrow(
             """
             insert into public.calendar_events
                 (user_id, graph_event_id, subject, organizer, attendees,
@@ -39,6 +41,7 @@ class CalendarEventsRepository:
                 online_meeting_join_url = excluded.online_meeting_join_url,
                 body_text = excluded.body_text,
                 synced_at = now()
+            returning id
             """,
             user_id,
             graph_event_id,
@@ -51,6 +54,7 @@ class CalendarEventsRepository:
             online_meeting_join_url,
             body_text,
         )
+        return row["id"]
 
     async def delete(self, user_id: uuid.UUID, graph_event_id: str) -> None:
         await self._pool.execute(
@@ -63,4 +67,19 @@ class CalendarEventsRepository:
         return await self._pool.fetchval(
             "select count(*) from public.calendar_events where user_id = $1",
             user_id,
+        )
+
+    async def list_busy_between(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            """
+            select start_time, end_time from public.calendar_events
+            where user_id = $1
+              and start_time is not null and end_time is not null
+              and start_time < $3 and end_time > $2
+            """,
+            user_id,
+            start,
+            end,
         )

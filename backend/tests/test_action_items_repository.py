@@ -1,8 +1,10 @@
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 
 from app.repositories.action_items import ActionItemsRepository
+from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.contacts import ContactsRepository
 from app.repositories.profiles import ProfilesRepository
 
@@ -152,3 +154,94 @@ async def test_list_recent_sorted_by_created_at_desc_respects_limit(pool, test_a
 
     rows = await action_items.list_recent(user_id, limit=2)
     assert [row["text"] for row in rows] == ["third", "second"]
+
+
+@pytest.mark.asyncio
+async def test_get_returns_item_joined_with_contact_and_schedule(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    contacts = ContactsRepository(pool)
+    action_items = ActionItemsRepository(pool)
+    contact_id = await contacts.upsert_by_email(user_id, "gina@example.com", "Gina", None)
+    await action_items.insert(
+        user_id=user_id, contact_id=contact_id, text="Call Gina", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    item_row = await pool.fetchrow("select id from public.action_items where user_id = $1", user_id)
+
+    row = await action_items.get(user_id, item_row["id"])
+
+    assert row["text"] == "Call Gina"
+    assert row["contact_id"] == contact_id
+    assert row["contact_display_name"] == "Gina"
+    assert row["contact_email_address"] == "gina@example.com"
+    assert row["scheduled_calendar_event_id"] is None
+    assert row["scheduled_start_time"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_returns_none_for_missing_or_foreign_item(pool, test_auth_user, test_auth_user_2):
+    user_id, email = test_auth_user
+    other_user_id, other_email = test_auth_user_2
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await ProfilesRepository(pool).upsert(other_user_id, other_email)
+    action_items = ActionItemsRepository(pool)
+    await action_items.insert(
+        user_id=other_user_id, contact_id=None, text="Not yours", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    foreign_item = await pool.fetchrow("select id from public.action_items where user_id = $1", other_user_id)
+
+    assert await action_items.get(user_id, uuid.uuid4()) is None
+    assert await action_items.get(user_id, foreign_item["id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_set_scheduled_calendar_event_id_returns_joined_row(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    contacts = ContactsRepository(pool)
+    calendar_events = CalendarEventsRepository(pool)
+    action_items = ActionItemsRepository(pool)
+    contact_id = await contacts.upsert_by_email(user_id, "gina@example.com", "Gina", None)
+    await action_items.insert(
+        user_id=user_id, contact_id=contact_id, text="Call Gina", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    item_row = await pool.fetchrow("select id from public.action_items where user_id = $1", user_id)
+    calendar_event_id = await calendar_events.upsert(
+        user_id=user_id, graph_event_id="evt-new", subject="Call Gina", organizer=None,
+        attendees=[], start_time=datetime(2026, 7, 20, 14, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 7, 20, 14, 30, tzinfo=timezone.utc),
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+
+    updated = await action_items.set_scheduled_calendar_event_id(user_id, item_row["id"], calendar_event_id)
+
+    assert updated["scheduled_calendar_event_id"] == calendar_event_id
+    assert updated["scheduled_start_time"] == datetime(2026, 7, 20, 14, 0, tzinfo=timezone.utc)
+    assert updated["contact_display_name"] == "Gina"
+
+
+@pytest.mark.asyncio
+async def test_set_scheduled_calendar_event_id_returns_none_for_foreign_item(pool, test_auth_user, test_auth_user_2):
+    user_id, email = test_auth_user
+    other_user_id, other_email = test_auth_user_2
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await ProfilesRepository(pool).upsert(other_user_id, other_email)
+    action_items = ActionItemsRepository(pool)
+    calendar_events = CalendarEventsRepository(pool)
+    await action_items.insert(
+        user_id=other_user_id, contact_id=None, text="Not yours", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    foreign_item = await pool.fetchrow("select id from public.action_items where user_id = $1", other_user_id)
+    calendar_event_id = await calendar_events.upsert(
+        user_id=other_user_id, graph_event_id="evt-x", subject=None, organizer=None,
+        attendees=[], start_time=None, end_time=None,
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+
+    result = await action_items.set_scheduled_calendar_event_id(user_id, foreign_item["id"], calendar_event_id)
+
+    assert result is None

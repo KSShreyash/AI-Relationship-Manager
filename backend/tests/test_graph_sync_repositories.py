@@ -192,3 +192,45 @@ async def test_chat_messages_upsert_dedupes_by_graph_message_id(pool, test_auth_
         "chat-msg-1",
     )
     assert row["content"] == "Hey there (edited)"
+
+
+@pytest.mark.asyncio
+async def test_calendar_events_upsert_returns_row_id(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    repo = CalendarEventsRepository(pool)
+
+    event_id = await repo.upsert(
+        user_id=user_id, graph_event_id="evt-return-id", subject="Test", organizer=None,
+        attendees=[], start_time=None, end_time=None,
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+
+    row = await pool.fetchrow("select id from public.calendar_events where user_id = $1 and graph_event_id = $2", user_id, "evt-return-id")
+    assert event_id == row["id"]
+
+
+@pytest.mark.asyncio
+async def test_calendar_events_list_busy_between_excludes_events_outside_range(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    repo = CalendarEventsRepository(pool)
+    await repo.upsert(
+        user_id=user_id, graph_event_id="evt-in-range", subject="In range", organizer=None,
+        attendees=[], start_time=datetime(2026, 7, 20, 14, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 7, 20, 14, 30, tzinfo=timezone.utc),
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+    await repo.upsert(
+        user_id=user_id, graph_event_id="evt-out-of-range", subject="Out of range", organizer=None,
+        attendees=[], start_time=datetime(2026, 8, 1, 14, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 8, 1, 14, 30, tzinfo=timezone.utc),
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+
+    busy = await repo.list_busy_between(
+        user_id, datetime(2026, 7, 19, tzinfo=timezone.utc), datetime(2026, 7, 21, tzinfo=timezone.utc)
+    )
+
+    assert len(busy) == 1
+    assert busy[0]["start_time"] == datetime(2026, 7, 20, 14, 0, tzinfo=timezone.utc)

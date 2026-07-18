@@ -40,9 +40,11 @@ class ActionItemsRepository:
     ) -> list[asyncpg.Record]:
         return await self._pool.fetch(
             """
-            select * from public.action_items
-            where user_id = $1 and contact_id = $2
-            order by created_at desc
+            select ai.*, ce.start_time as scheduled_start_time
+            from public.action_items ai
+            left join public.calendar_events ce on ce.id = ai.scheduled_calendar_event_id
+            where ai.user_id = $1 and ai.contact_id = $2
+            order by ai.created_at desc
             """,
             user_id,
             contact_id,
@@ -58,9 +60,11 @@ class ActionItemsRepository:
             """
             select ai.*,
                    c.display_name as contact_display_name,
-                   c.email_address as contact_email_address
+                   c.email_address as contact_email_address,
+                   ce.start_time as scheduled_start_time
             from public.action_items ai
             left join public.contacts c on c.id = ai.contact_id
+            left join public.calendar_events ce on ce.id = ai.scheduled_calendar_event_id
             where ai.user_id = $1
               and ($2::text is null or ai.direction = $2)
               and ($3::boolean or ai.status = 'open')
@@ -69,6 +73,51 @@ class ActionItemsRepository:
             user_id,
             direction,
             include_done,
+        )
+
+    async def get(self, user_id: uuid.UUID, item_id: uuid.UUID) -> asyncpg.Record | None:
+        return await self._pool.fetchrow(
+            """
+            select ai.*,
+                   c.display_name as contact_display_name,
+                   c.email_address as contact_email_address,
+                   ce.start_time as scheduled_start_time
+            from public.action_items ai
+            left join public.contacts c on c.id = ai.contact_id
+            left join public.calendar_events ce on ce.id = ai.scheduled_calendar_event_id
+            where ai.id = $1 and ai.user_id = $2
+            """,
+            item_id,
+            user_id,
+        )
+
+    async def set_scheduled_calendar_event_id(
+        self,
+        user_id: uuid.UUID,
+        item_id: uuid.UUID,
+        calendar_event_id: uuid.UUID,
+        conn: asyncpg.Connection | None = None,
+    ) -> asyncpg.Record | None:
+        executor = conn or self._pool
+        return await executor.fetchrow(
+            """
+            with updated as (
+                update public.action_items
+                set scheduled_calendar_event_id = $3
+                where id = $1 and user_id = $2
+                returning *
+            )
+            select updated.*,
+                   c.display_name as contact_display_name,
+                   c.email_address as contact_email_address,
+                   ce.start_time as scheduled_start_time
+            from updated
+            left join public.contacts c on c.id = updated.contact_id
+            left join public.calendar_events ce on ce.id = updated.scheduled_calendar_event_id
+            """,
+            item_id,
+            user_id,
+            calendar_event_id,
         )
 
     async def update_status(

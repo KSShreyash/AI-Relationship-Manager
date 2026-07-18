@@ -126,4 +126,38 @@ describe('SearchPage', () => {
 
     vi.useRealTimers()
   })
+
+  it('ignores a stale response that resolves after the query was cleared', async () => {
+    vi.useFakeTimers()
+
+    let resolveFirst: (value: Response) => void = () => {}
+    apiFetchMock.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve })) // "alice"
+
+    render(<SearchPage />)
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: 'alice' } })
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/search?q=alice')
+
+    fireEvent.change(input, { target: { value: '' } })
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(screen.getByText(/type to search/i)).toBeInTheDocument()
+
+    resolveFirst(jsonResponse({
+      contacts: [{ id: 'c1', display_name: 'Stale Alice', email_address: null, notes: null }],
+      action_items: [],
+    }))
+    // Flush several microtask turns so response.json() and any resulting
+    // setState would have a chance to land before we assert it didn't.
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(0)
+    }
+
+    expect(screen.getByText(/type to search/i)).toBeInTheDocument()
+    expect(screen.queryByText('Stale Alice')).not.toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
 })

@@ -30,6 +30,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!query) {
+      requestId.current++
       setResults(null)
       setError(null)
       return

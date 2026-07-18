@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
+import ScheduleActionItemPanel from '@/app/components/ScheduleActionItemPanel'
 
 type ContactDetail = {
   id: string
@@ -21,6 +22,8 @@ type ActionItem = {
   status: 'open' | 'done'
   due_date: string | null
   source_type: string
+  scheduled_calendar_event_id: string | null
+  scheduled_start_time: string | null
   created_at: string
   updated_at: string
 }
@@ -35,31 +38,31 @@ export default function ContactProfilePage() {
   const { id } = useParams<{ id: string }>()
   const [state, setState] = useState<State>({ state: 'loading' })
 
-  useEffect(() => {
-    async function load() {
-      const contactResponse = await apiFetch(`/api/contacts/${id}`)
-      if (contactResponse.status === 404) {
-        setState({ state: 'not_found' })
-        return
-      }
-      if (!contactResponse.ok) {
-        setState({ state: 'error' })
-        return
-      }
-      const contact = await contactResponse.json()
-
-      const actionItemsResponse = await apiFetch(`/api/contacts/${id}/action-items`)
-      if (!actionItemsResponse.ok) {
-        setState({ state: 'error' })
-        return
-      }
-      const actionItems = await actionItemsResponse.json()
-
-      setState({ state: 'ready', contact, actionItems })
+  const load = useCallback(async () => {
+    const contactResponse = await apiFetch(`/api/contacts/${id}`)
+    if (contactResponse.status === 404) {
+      setState({ state: 'not_found' })
+      return
     }
+    if (!contactResponse.ok) {
+      setState({ state: 'error' })
+      return
+    }
+    const contact = await contactResponse.json()
 
-    load()
+    const actionItemsResponse = await apiFetch(`/api/contacts/${id}/action-items`)
+    if (!actionItemsResponse.ok) {
+      setState({ state: 'error' })
+      return
+    }
+    const actionItems = await actionItemsResponse.json()
+
+    setState({ state: 'ready', contact, actionItems })
   }, [id])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   if (state.state === 'loading') return <p>Loading…</p>
   if (state.state === 'not_found') return <p>Contact not found.</p>
@@ -81,7 +84,16 @@ export default function ContactProfilePage() {
       ) : (
         <ul>
           {openItems.map((item) => (
-            <li key={item.id}>{item.text}</li>
+            <li key={item.id}>
+              {item.text}
+              <ScheduleActionItemPanel
+                itemId={item.id}
+                scheduledCalendarEventId={item.scheduled_calendar_event_id}
+                scheduledStartTime={item.scheduled_start_time}
+                contact={contact}
+                onScheduled={load}
+              />
+            </li>
           ))}
         </ul>
       )}

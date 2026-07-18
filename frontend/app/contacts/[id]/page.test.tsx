@@ -52,4 +52,36 @@ describe('ContactProfilePage', () => {
 
     await waitFor(() => expect(screen.getByText(/contact not found/i)).toBeInTheDocument())
   })
+
+  it('shows a Schedule control on open items and a scheduled indicator once scheduled', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/contacts/contact-1') {
+        return Promise.resolve(jsonResponse({
+          id: 'contact-1', email_address: 'alice@example.com', display_name: 'Alice',
+          notes: 'Works at Acme.', created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
+        }))
+      }
+      if (path === '/api/contacts/contact-1/action-items') {
+        return Promise.resolve(jsonResponse([
+          {
+            id: 'ai-1', text: 'Send the deck', direction: 'mine', status: 'open', due_date: null,
+            source_type: 'email', scheduled_calendar_event_id: null, scheduled_start_time: null,
+            created_at: '2026-07-17T00:00:00Z', updated_at: '2026-07-17T00:00:00Z',
+          },
+          {
+            id: 'ai-2', text: 'Already booked', direction: 'mine', status: 'open', due_date: null,
+            source_type: 'email', scheduled_calendar_event_id: 'evt-1', scheduled_start_time: '2026-07-22T14:00:00Z',
+            created_at: '2026-07-16T00:00:00Z', updated_at: '2026-07-16T00:00:00Z',
+          },
+        ]))
+      }
+      throw new Error(`Unexpected path: ${path}`)
+    })
+
+    render(<ContactProfilePage />)
+
+    await waitFor(() => expect(screen.getByText('Send the deck')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /^schedule$/i })).toBeInTheDocument()
+    expect(screen.getByText(/scheduled:/i)).toBeInTheDocument()
+  })
 })

@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
+import json
 
 import pytest
 import respx
 from httpx import Response
+import httpx
 
-from app.services.graph_client import GraphRefreshError, get_me, refresh_access_token
+from app.services.graph_client import GraphRefreshError, get_me, refresh_access_token, create_calendar_event
 
 
 @patch("app.services.graph_client.msal.ConfidentialClientApplication")
@@ -48,3 +50,26 @@ async def test_get_me_returns_json():
     result = await get_me("access-token")
 
     assert result["mail"] == "user@example.com"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_calendar_event_posts_payload_and_returns_json():
+    route = respx.post("https://graph.microsoft.com/v1.0/me/events").mock(
+        return_value=Response(201, json={"id": "graph-evt-1", "subject": "Call Gina"})
+    )
+
+    result = await create_calendar_event("access-token", {"subject": "Call Gina"})
+
+    assert result == {"id": "graph-evt-1", "subject": "Call Gina"}
+    assert route.calls.last.request.headers["Authorization"] == "Bearer access-token"
+    assert json.loads(route.calls.last.request.content) == {"subject": "Call Gina"}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_create_calendar_event_raises_on_error_status():
+    respx.post("https://graph.microsoft.com/v1.0/me/events").mock(return_value=Response(403))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await create_calendar_event("access-token", {"subject": "Call Gina"})

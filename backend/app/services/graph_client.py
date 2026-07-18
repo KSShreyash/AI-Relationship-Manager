@@ -43,6 +43,17 @@ async def get_me(access_token: str) -> dict:
     return response.json()
 
 
+async def create_calendar_event(access_token: str, payload: dict) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{GRAPH_BASE_URL}/me/events",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json=payload,
+        )
+    response.raise_for_status()
+    return response.json()
+
+
 async def _get_json(client: httpx.AsyncClient, url: str, headers: dict) -> dict:
     response = await client.get(url, headers=headers)
     if response.status_code == 429:

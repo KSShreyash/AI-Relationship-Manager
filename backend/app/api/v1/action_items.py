@@ -30,6 +30,8 @@ def _serialize(row) -> dict:
         "status": row["status"],
         "due_date": row["due_date"],
         "contact": contact,
+        "scheduled_calendar_event_id": row["scheduled_calendar_event_id"],
+        "scheduled_start_time": row["scheduled_start_time"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

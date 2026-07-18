@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -6,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.deps import CurrentUser, get_current_user
 from app.main import app
 from app.repositories.action_items import ActionItemsRepository
+from app.repositories.calendar_events import CalendarEventsRepository
 from app.repositories.contacts import ContactsRepository
 from app.repositories.profiles import ProfilesRepository
 
@@ -247,5 +249,39 @@ async def test_list_action_items_only_returns_callers_own_items(pool, test_auth_
         assert response.status_code == 200
         texts = {row["text"] for row in response.json()}
         assert texts == {"Mine own item"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_list_action_items_includes_scheduled_fields(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    contacts = ContactsRepository(pool)
+    action_items = ActionItemsRepository(pool)
+    calendar_events = CalendarEventsRepository(pool)
+    contact_id = await contacts.upsert_by_email(user_id, "gina@example.com", "Gina", None)
+    await action_items.insert(
+        user_id=user_id, contact_id=contact_id, text="Call Gina", direction="mine",
+        due_date=None, source_type="email", source_id=uuid.uuid4(),
+    )
+    item_row = await pool.fetchrow("select id from public.action_items where user_id = $1", user_id)
+    calendar_event_id = await calendar_events.upsert(
+        user_id=user_id, graph_event_id="evt-1", subject="Call Gina", organizer=None,
+        attendees=[], start_time=datetime(2026, 7, 20, 14, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 7, 20, 14, 30, tzinfo=timezone.utc),
+        is_online_meeting=False, online_meeting_join_url=None, body_text=None,
+    )
+    await action_items.set_scheduled_calendar_event_id(user_id, item_row["id"], calendar_event_id)
+    _override_auth(user_id, email)
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/action-items")
+
+        body = response.json()
+        assert body[0]["scheduled_calendar_event_id"] == str(calendar_event_id)
+        assert body[0]["scheduled_start_time"] == "2026-07-20T14:00:00+00:00"
     finally:
         app.dependency_overrides.clear()

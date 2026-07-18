@@ -209,7 +209,7 @@ In `backend/app/repositories/contacts.py`, add (place it near `list_for_user`, w
                    ts_rank(
                        to_tsvector('english',
                            coalesce(display_name, '') || ' ' ||
-                           coalesce(email_address, '') || ' ' ||
+                           replace(coalesce(email_address, ''), '@', ' ') || ' ' ||
                            coalesce(notes, '')
                        ),
                        websearch_to_tsquery('english', $2)
@@ -218,7 +218,7 @@ In `backend/app/repositories/contacts.py`, add (place it near `list_for_user`, w
             where user_id = $1
               and to_tsvector('english',
                       coalesce(display_name, '') || ' ' ||
-                      coalesce(email_address, '') || ' ' ||
+                      replace(coalesce(email_address, ''), '@', ' ') || ' ' ||
                       coalesce(notes, '')
                   ) @@ websearch_to_tsquery('english', $2)
             order by rank desc
@@ -229,6 +229,8 @@ In `backend/app/repositories/contacts.py`, add (place it near `list_for_user`, w
             limit,
         )
 ```
+
+Note the `replace(coalesce(email_address, ''), '@', ' ')` — verified directly against the live database before this plan was written: Postgres's `to_tsvector` treats an email-shaped string (`zephyr@example.com`) as a single indivisible lexeme, so searching for just `zephyr` would never match it without first replacing `@` with a space to split it into separate, matchable words (`zephyr` / `example.com`). Without this, only a search for the complete email address would ever match.
 
 In `backend/app/repositories/action_items.py`, add (place it near `list_for_user`, which it resembles):
 

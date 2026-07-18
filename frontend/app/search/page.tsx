@@ -75,7 +75,7 @@ export default function SearchPage() {
             <ul>
               {results.contacts.map((contact) => (
                 <li key={contact.id}>
-                  <a href={`/contacts/${contact.id}`}>
+                  <a href={`/contacts/view?id=${contact.id}`}>
                     {contact.display_name ?? contact.email_address}
                   </a>
                   {contact.notes && ` — ${contact.notes}`}
@@ -95,7 +95,7 @@ export default function SearchPage() {
                   {item.contact && (
                     <>
                       {' — '}
-                      <a href={`/contacts/${item.contact.id}`}>
+                      <a href={`/contacts/view?id=${item.contact.id}`}>
                         {item.contact.display_name ?? item.contact.email_address}
                       </a>
                     </>

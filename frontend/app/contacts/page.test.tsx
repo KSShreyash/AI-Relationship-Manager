@@ -29,7 +29,7 @@ describe('ContactsPage', () => {
 
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument())
     expect(screen.getByText(/2/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /alice/i })).toHaveAttribute('href', '/contacts/1')
+    expect(screen.getByRole('link', { name: /alice/i })).toHaveAttribute('href', '/contacts/view?id=1')
   })
 
   it('shows an empty state when there are no contacts', async () => {

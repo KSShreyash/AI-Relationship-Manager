@@ -51,7 +51,7 @@ export default function ContactsPage() {
         <ul className="mt-4">
           {contacts.map((contact) => (
             <li key={contact.id}>
-              <a href={`/contacts/${contact.id}`}>
+              <a href={`/contacts/view?id=${contact.id}`}>
                 {contact.display_name ?? contact.email_address}
               </a>
               {' — '}

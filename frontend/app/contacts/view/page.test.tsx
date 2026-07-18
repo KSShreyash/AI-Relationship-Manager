@@ -1,13 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { apiFetchMock, useParamsMock } = vi.hoisted(() => ({
+const { apiFetchMock, useSearchParamsMock } = vi.hoisted(() => ({
   apiFetchMock: vi.fn(),
-  useParamsMock: vi.fn(),
+  useSearchParamsMock: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({ apiFetch: apiFetchMock }))
-vi.mock('next/navigation', () => ({ useParams: useParamsMock }))
+vi.mock('next/navigation', () => ({ useSearchParams: useSearchParamsMock }))
 
 import ContactProfilePage from './page'
 
@@ -18,7 +18,7 @@ function jsonResponse(body: unknown, status = 200) {
 describe('ContactProfilePage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
-    useParamsMock.mockReturnValue({ id: 'contact-1' })
+    useSearchParamsMock.mockReturnValue(new URLSearchParams({ id: 'contact-1' }))
   })
 
   it('renders notes and splits action items into open and done sections', async () => {
@@ -51,6 +51,15 @@ describe('ContactProfilePage', () => {
     render(<ContactProfilePage />)
 
     await waitFor(() => expect(screen.getByText(/contact not found/i)).toBeInTheDocument())
+  })
+
+  it('shows a not-found message when the id query param is missing', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams())
+
+    render(<ContactProfilePage />)
+
+    await waitFor(() => expect(screen.getByText(/contact not found/i)).toBeInTheDocument())
+    expect(apiFetchMock).not.toHaveBeenCalled()
   })
 
   it('shows a Schedule control on open items and a scheduled indicator once scheduled', async () => {

@@ -49,7 +49,7 @@ describe('SearchPage', () => {
 
     const contactsHeading = screen.getByRole('heading', { name: /^contacts$/i })
     const contactsList = contactsHeading.nextElementSibling as HTMLElement
-    expect(within(contactsList).getByRole('link', { name: /alice johnson/i })).toHaveAttribute('href', '/contacts/c1')
+    expect(within(contactsList).getByRole('link', { name: /alice johnson/i })).toHaveAttribute('href', '/contacts/view?id=c1')
     expect(screen.getByText(/discussed the budget/i)).toBeInTheDocument()
 
     vi.useRealTimers()

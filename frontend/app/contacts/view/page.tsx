@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
 import ScheduleActionItemPanel from '@/app/components/ScheduleActionItemPanel'
@@ -35,10 +35,24 @@ type State =
   | { state: 'ready'; contact: ContactDetail; actionItems: ActionItem[] }
 
 export default function ContactProfilePage() {
-  const { id } = useParams<{ id: string }>()
+  return (
+    <Suspense fallback={<p>Loading…</p>}>
+      <ContactProfileContent />
+    </Suspense>
+  )
+}
+
+function ContactProfileContent() {
+  const searchParams = useSearchParams()
+  const id = searchParams.get('id')
   const [state, setState] = useState<State>({ state: 'loading' })
 
   const load = useCallback(async () => {
+    if (!id) {
+      setState({ state: 'not_found' })
+      return
+    }
+
     const contactResponse = await apiFetch(`/api/contacts/${id}`)
     if (contactResponse.status === 404) {
       setState({ state: 'not_found' })

@@ -1,5 +1,14 @@
+import uuid
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+import asyncpg
+import httpx
+
+from app.repositories.action_items import ActionItemsRepository
+from app.repositories.calendar_events import CalendarEventsRepository
+from app.services import graph_client
+from app.services.graph_tokens_service import get_valid_access_token, refresh_and_persist
 
 SLOT_MINUTES = 30
 LOOKAHEAD_DAYS = 14
@@ -43,3 +52,71 @@ def _overlaps_any(
     start: datetime, end: datetime, busy: list[tuple[datetime, datetime]]
 ) -> bool:
     return any(start < busy_end and end > busy_start for busy_start, busy_end in busy)
+
+
+def _graph_datetime(dt: datetime) -> dict:
+    naive_utc = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return {"dateTime": naive_utc.isoformat(), "timeZone": "UTC"}
+
+
+async def create_meeting(
+    pool: asyncpg.Pool,
+    user_id: uuid.UUID,
+    item_id: uuid.UUID,
+    item_text: str,
+    start: datetime,
+    end: datetime,
+    online_meeting: bool,
+    contact_email: str | None,
+    contact_display_name: str | None,
+) -> asyncpg.Record | None:
+    access_token = await get_valid_access_token(pool, user_id)
+    if access_token is None:
+        return None
+
+    payload: dict = {
+        "subject": item_text,
+        "start": _graph_datetime(start),
+        "end": _graph_datetime(end),
+        "isOnlineMeeting": online_meeting,
+    }
+    if online_meeting:
+        payload["onlineMeetingProvider"] = "teamsForBusiness"
+    if contact_email:
+        payload["attendees"] = [{
+            "emailAddress": {"address": contact_email, "name": contact_display_name or contact_email},
+            "type": "required",
+        }]
+
+    try:
+        graph_event = await graph_client.create_calendar_event(access_token, payload)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            access_token = await refresh_and_persist(pool, user_id)
+            if access_token is None:
+                return None
+            graph_event = await graph_client.create_calendar_event(access_token, payload)
+        else:
+            raise
+
+    online_meeting_info = graph_event.get("onlineMeeting") or {}
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            calendar_event_id = await CalendarEventsRepository(pool).upsert(
+                user_id=user_id,
+                graph_event_id=graph_event["id"],
+                subject=graph_event.get("subject"),
+                organizer=((graph_event.get("organizer") or {}).get("emailAddress") or {}).get("address"),
+                attendees=[(a.get("emailAddress") or {}) for a in graph_event.get("attendees", [])],
+                start_time=start,
+                end_time=end,
+                is_online_meeting=graph_event.get("isOnlineMeeting", False),
+                online_meeting_join_url=online_meeting_info.get("joinUrl"),
+                body_text=None,
+                conn=conn,
+            )
+            updated_item = await ActionItemsRepository(pool).set_scheduled_calendar_event_id(
+                user_id, item_id, calendar_event_id, conn=conn,
+            )
+
+    return updated_item

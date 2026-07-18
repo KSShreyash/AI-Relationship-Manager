@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { apiFetch } from '@/lib/api'
+import ScheduleActionItemPanel from '@/app/components/ScheduleActionItemPanel'
 
 type ActionItem = {
   id: string
@@ -11,6 +12,8 @@ type ActionItem = {
   status: 'open' | 'done'
   due_date: string | null
   contact: { id: string; display_name: string | null; email_address: string | null } | null
+  scheduled_calendar_event_id: string | null
+  scheduled_start_time: string | null
   created_at: string
   updated_at: string
 }
@@ -75,6 +78,15 @@ export default function PlannerPage() {
         <button onClick={() => toggleDone(item)} className="ml-2 underline">
           {item.status === 'open' ? 'Mark done' : 'Reopen'}
         </button>
+        {item.status === 'open' && (
+          <ScheduleActionItemPanel
+            itemId={item.id}
+            scheduledCalendarEventId={item.scheduled_calendar_event_id}
+            scheduledStartTime={item.scheduled_start_time}
+            contact={item.contact}
+            onScheduled={load}
+          />
+        )}
       </li>
     )
   }

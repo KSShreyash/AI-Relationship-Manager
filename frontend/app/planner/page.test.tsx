@@ -120,4 +120,27 @@ describe('PlannerPage', () => {
     const completedHeading = screen.getByRole('heading', { name: 'Completed' })
     expect(within(completedHeading.nextElementSibling as HTMLElement).getByText('Done task')).toBeInTheDocument()
   })
+
+  it('shows a Schedule control on open items with a contact and hides it once scheduled', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse([
+      {
+        id: '10', text: 'Call Gina', direction: 'mine', status: 'open', due_date: null,
+        contact: { id: 'c1', display_name: 'Gina', email_address: 'gina@example.com' },
+        scheduled_calendar_event_id: null, scheduled_start_time: null,
+        created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+      },
+      {
+        id: '11', text: 'Already booked', direction: 'mine', status: 'open', due_date: null,
+        contact: { id: 'c2', display_name: 'Bob', email_address: 'bob@example.com' },
+        scheduled_calendar_event_id: 'evt-1', scheduled_start_time: '2026-07-22T14:00:00Z',
+        created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+      },
+    ]))
+
+    render(<PlannerPage />)
+
+    await waitFor(() => expect(screen.getByText(/Call Gina/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /^schedule$/i })).toBeInTheDocument()
+    expect(screen.getByText(/scheduled:/i)).toBeInTheDocument()
+  })
 })

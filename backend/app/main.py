@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import action_items, auth, contacts, dashboard, extraction, me, sync
+from app.api.v1 import action_items, auth, contacts, dashboard, extraction, me, scheduling, sync
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +23,7 @@ app.include_router(auth.router)
 app.include_router(contacts.router)
 app.include_router(dashboard.router)
 app.include_router(me.router)
+app.include_router(scheduling.router)
 app.include_router(sync.router)
 app.include_router(extraction.router)
 

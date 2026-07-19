@@ -87,27 +87,47 @@ function ContactProfileContent() {
     load()
   }, [load])
 
-  if (state.state === 'loading') return <p>Loading…</p>
-  if (state.state === 'not_found') return <p>Contact not found.</p>
-  if (state.state === 'error') return <p role="alert">Something went wrong loading this contact.</p>
+  if (state.state === 'loading') {
+    return (
+      <div className="p-8">
+        <p className="text-neutral-400">Loading…</p>
+      </div>
+    )
+  }
+  if (state.state === 'not_found') {
+    return (
+      <div className="p-8">
+        <p className="text-neutral-400">Contact not found.</p>
+      </div>
+    )
+  }
+  if (state.state === 'error') {
+    return (
+      <div className="p-8">
+        <p role="alert" className="text-red-400">Something went wrong loading this contact.</p>
+      </div>
+    )
+  }
 
   const { contact, actionItems } = state
   const openItems = actionItems.filter((item) => item.status === 'open')
   const doneItems = actionItems.filter((item) => item.status === 'done')
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl">{contact.display_name ?? contact.email_address}</h1>
-      {contact.email_address && <p>{contact.email_address}</p>}
-      <p className="mt-4">{contact.notes ?? 'No notes yet.'}</p>
+    <div className="p-8">
+      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+        <h1 className="text-xl font-semibold text-white">{contact.display_name ?? contact.email_address}</h1>
+        {contact.email_address && <p className="mt-1 text-sm text-neutral-400">{contact.email_address}</p>}
+        <p className="mt-4 text-sm text-neutral-300">{contact.notes ?? 'No notes yet.'}</p>
+      </div>
 
-      <h2 className="mt-6 text-lg">Open</h2>
+      <h2 className="mt-6 text-sm font-semibold text-white">Open</h2>
       {openItems.length === 0 ? (
-        <p>Nothing open.</p>
+        <p className="mt-2 text-sm text-neutral-400">Nothing open.</p>
       ) : (
-        <ul>
+        <ul className="mt-2 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
           {openItems.map((item) => (
-            <li key={item.id}>
+            <li key={item.id} className="px-4 py-3 text-sm text-neutral-200">
               {item.text}
               <ScheduleActionItemPanel
                 itemId={item.id}
@@ -121,13 +141,13 @@ function ContactProfileContent() {
         </ul>
       )}
 
-      <h2 className="mt-6 text-lg">Done</h2>
+      <h2 className="mt-6 text-sm font-semibold text-white">Done</h2>
       {doneItems.length === 0 ? (
-        <p>Nothing done yet.</p>
+        <p className="mt-2 text-sm text-neutral-400">Nothing done yet.</p>
       ) : (
-        <ul>
+        <ul className="mt-2 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
           {doneItems.map((item) => (
-            <li key={item.id}>{item.text}</li>
+            <li key={item.id} className="px-4 py-3 text-sm text-neutral-400 line-through">{item.text}</li>
           ))}
         </ul>
       )}

@@ -1,5 +1,7 @@
+import logging
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.concurrency import run_in_threadpool
 
@@ -9,6 +11,8 @@ from app.db.session import get_pool
 from app.repositories.graph_tokens import GraphTokensRepository
 from app.repositories.profiles import ProfilesRepository
 from app.services.graph_client import GraphRefreshError, get_me, refresh_access_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/me", tags=["me"])
 
@@ -44,6 +48,19 @@ async def graph_status(current_user: CurrentUser = Depends(get_current_user)):
         )
         access_token = refreshed["access_token"]
 
-    graph_me = await get_me(access_token)
+    try:
+        graph_me = await get_me(access_token)
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "Graph /me call failed for user %s: status=%s body=%s",
+            current_user.user_id,
+            exc.response.status_code,
+            exc.response.text,
+        )
+        if exc.response.status_code == 401:
+            await profiles_repo.set_graph_connection_status(current_user.user_id, "needs_reauth")
+            raise HTTPException(status_code=409, detail="needs_reauth")
+        raise HTTPException(status_code=502, detail="graph_me_failed")
+
     await profiles_repo.set_graph_connection_status(current_user.user_id, "connected")
     return {"connected": True, "graph_me": graph_me}

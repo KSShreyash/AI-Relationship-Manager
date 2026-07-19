@@ -49,31 +49,38 @@ export default function ContactsPage() {
   }, [search, router])
 
   return (
-    <div className="p-6">
+    <div className="p-8">
+      <h1 className="text-xl font-semibold text-white">Contacts</h1>
+
       <input
         type="text"
         placeholder="Search contacts…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="rounded border border-gray-300 px-3 py-2"
+        className="mt-4 w-full max-w-sm rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:border-emerald-500 focus:outline-none"
       />
 
-      {error && <p role="alert" className="mt-4 text-red-600">Something went wrong loading your contacts.</p>}
+      {error && (
+        <p role="alert" className="mt-4 text-sm text-red-400">
+          Something went wrong loading your contacts.
+        </p>
+      )}
 
       {contacts === null ? (
-        error ? null : <p className="mt-4">Loading…</p>
+        error ? null : <p className="mt-4 text-sm text-neutral-400">Loading…</p>
       ) : contacts.length === 0 ? (
-        <p className="mt-4">No contacts yet — sync and extract to get started.</p>
+        <p className="mt-4 text-sm text-neutral-400">No contacts yet — sync and extract to get started.</p>
       ) : (
-        <ul className="mt-4">
+        <ul className="mt-4 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
           {contacts.map((contact) => (
-            <li key={contact.id}>
-              <a href={`/contacts/view?id=${contact.id}`}>
+            <li key={contact.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <a href={`/contacts/view?id=${contact.id}`} className="text-emerald-400 hover:underline">
                 {contact.display_name ?? contact.email_address}
               </a>
-              {' — '}
-              {contact.open_action_item_count} open action item
-              {contact.open_action_item_count === 1 ? '' : 's'}
+              <span className="text-neutral-400">
+                {contact.open_action_item_count} open action item
+                {contact.open_action_item_count === 1 ? '' : 's'}
+              </span>
             </li>
           ))}
         </ul>

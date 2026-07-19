@@ -59,8 +59,16 @@ export default function CallbackPage() {
   }, [router])
 
   if (error) {
-    return <p role="alert">{error}</p>
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
+        <p role="alert" className="text-red-400">{error}</p>
+      </main>
+    )
   }
 
-  return <p>Finishing sign-in…</p>
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
+      <p className="text-neutral-400">Finishing sign-in…</p>
+    </main>
+  )
 }

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -92,4 +93,56 @@ async def test_graph_status_sets_needs_reauth_on_refresh_failure(pool, test_auth
     assert response.status_code == 409
     profile = await ProfilesRepository(pool).get(user_id)
     assert profile["graph_connection_status"] == "needs_reauth"
+    app.dependency_overrides.clear()
+
+
+def _graph_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://graph.microsoft.com/v1.0/me")
+    response = httpx.Response(status_code, request=request, text="graph error body")
+    return httpx.HTTPStatusError("graph error", request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_graph_status_sets_needs_reauth_when_graph_rejects_token(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=user_id, email=email)
+
+    with patch("app.api.v1.me.get_me", new=AsyncMock(side_effect=_graph_error(401))):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/me/graph-status")
+
+    assert response.status_code == 409
+    profile = await ProfilesRepository(pool).get(user_id)
+    assert profile["graph_connection_status"] == "needs_reauth"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_graph_status_returns_502_on_other_graph_failure(pool, test_auth_user):
+    user_id, email = test_auth_user
+    await ProfilesRepository(pool).upsert(user_id, email)
+    await GraphTokensRepository(pool).upsert(
+        user_id=user_id,
+        encrypted_access_token=encrypt_token("valid-access"),
+        encrypted_refresh_token=encrypt_token("valid-refresh"),
+        access_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        scopes=["Mail.Read"],
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(user_id=user_id, email=email)
+
+    with patch("app.api.v1.me.get_me", new=AsyncMock(side_effect=_graph_error(403))):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/me/graph-status")
+
+    assert response.status_code == 502
     app.dependency_overrides.clear()

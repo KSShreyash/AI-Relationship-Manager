@@ -85,10 +85,12 @@ export default function PlannerPage() {
 
   function renderItem(item: ActionItem) {
     return (
-      <li key={item.id}>
+      <li key={item.id} className="px-4 py-3 text-sm text-neutral-200">
         {item.text}
-        {item.contact && ` — ${item.contact.display_name ?? item.contact.email_address}`}
-        <button onClick={() => toggleDone(item)} className="ml-2 underline">
+        {item.contact && (
+          <span className="text-neutral-400"> — {item.contact.display_name ?? item.contact.email_address}</span>
+        )}
+        <button onClick={() => toggleDone(item)} className="ml-2 text-emerald-400 hover:underline">
           {item.status === 'open' ? 'Mark done' : 'Reopen'}
         </button>
         {item.status === 'open' && (
@@ -104,60 +106,53 @@ export default function PlannerPage() {
     )
   }
 
+  function renderGroup(title: string, groupItems: ActionItem[]) {
+    if (groupItems.length === 0) return null
+    return (
+      <div className="mt-6">
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
+        <ul className="mt-2 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
+          {groupItems.map(renderItem)}
+        </ul>
+      </div>
+    )
+  }
+
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-4">
-        <select value={direction} onChange={(e) => setDirection(e.target.value as Direction)}>
+    <div className="p-8">
+      <h1 className="text-xl font-semibold text-white">Planner</h1>
+
+      <div className="mt-4 flex items-center gap-4">
+        <select
+          value={direction}
+          onChange={(e) => setDirection(e.target.value as Direction)}
+          className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 focus:border-emerald-500 focus:outline-none"
+        >
           <option value="all">All</option>
           <option value="mine">Mine</option>
           <option value="theirs">Theirs</option>
         </select>
-        <label>
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
           <input
             type="checkbox"
             checked={includeDone}
             onChange={(e) => setIncludeDone(e.target.checked)}
           />
-          {' '}Show completed
+          Show completed
         </label>
       </div>
 
-      {toggleError && <p role="alert" className="mt-2 text-red-600">{toggleError}</p>}
+      {toggleError && <p role="alert" className="mt-3 text-sm text-red-400">{toggleError}</p>}
 
       {items.length === 0 ? (
-        <p className="mt-4">Nothing due.</p>
+        <p className="mt-4 text-sm text-neutral-400">Nothing due.</p>
       ) : (
         <>
-          {overdue.length > 0 && (
-            <>
-              <h2 className="mt-6 text-lg">Overdue</h2>
-              <ul>{overdue.map(renderItem)}</ul>
-            </>
-          )}
-          {dueThisWeek.length > 0 && (
-            <>
-              <h2 className="mt-6 text-lg">Due this week</h2>
-              <ul>{dueThisWeek.map(renderItem)}</ul>
-            </>
-          )}
-          {later.length > 0 && (
-            <>
-              <h2 className="mt-6 text-lg">Later</h2>
-              <ul>{later.map(renderItem)}</ul>
-            </>
-          )}
-          {noDueDate.length > 0 && (
-            <>
-              <h2 className="mt-6 text-lg">No due date</h2>
-              <ul>{noDueDate.map(renderItem)}</ul>
-            </>
-          )}
-          {includeDone && doneItems.length > 0 && (
-            <>
-              <h2 className="mt-6 text-lg">Completed</h2>
-              <ul>{doneItems.map(renderItem)}</ul>
-            </>
-          )}
+          {renderGroup('Overdue', overdue)}
+          {renderGroup('Due this week', dueThisWeek)}
+          {renderGroup('Later', later)}
+          {renderGroup('No due date', noDueDate)}
+          {includeDone && renderGroup('Completed', doneItems)}
         </>
       )}
     </div>

@@ -18,5 +18,9 @@ export default function Home() {
     redirect()
   }, [router])
 
-  return <p>Redirecting…</p>
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
+      <p className="text-neutral-400">Redirecting…</p>
+    </main>
+  )
 }

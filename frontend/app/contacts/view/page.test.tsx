@@ -1,13 +1,21 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { apiFetchMock, useSearchParamsMock } = vi.hoisted(() => ({
-  apiFetchMock: vi.fn(),
-  useSearchParamsMock: vi.fn(),
-}))
+const { apiFetchMock, useSearchParamsMock, pushMock, routerMock } = vi.hoisted(() => {
+  const pushMock = vi.fn()
+  return {
+    apiFetchMock: vi.fn(),
+    useSearchParamsMock: vi.fn(),
+    pushMock,
+    routerMock: { push: pushMock },
+  }
+})
 
 vi.mock('@/lib/api', () => ({ apiFetch: apiFetchMock }))
-vi.mock('next/navigation', () => ({ useSearchParams: useSearchParamsMock }))
+vi.mock('next/navigation', () => ({
+  useSearchParams: useSearchParamsMock,
+  useRouter: () => routerMock,
+}))
 
 import ContactProfilePage from './page'
 
@@ -18,7 +26,16 @@ function jsonResponse(body: unknown, status = 200) {
 describe('ContactProfilePage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
+    pushMock.mockReset()
     useSearchParamsMock.mockReturnValue(new URLSearchParams({ id: 'contact-1' }))
+  })
+
+  it('redirects to login on a 401 (no session)', async () => {
+    apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))
+
+    render(<ContactProfilePage />)
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/login'))
   })
 
   it('renders notes and splits action items into open and done sections', async () => {

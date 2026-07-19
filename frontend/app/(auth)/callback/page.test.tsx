@@ -2,14 +2,17 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getSessionMock = vi.fn()
-const pushMock = vi.fn()
+const { pushMock, routerMock } = vi.hoisted(() => {
+  const pushMock = vi.fn()
+  return { pushMock, routerMock: { push: pushMock } }
+})
 
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ auth: { getSession: getSessionMock } }),
 }))
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => routerMock,
 }))
 
 import CallbackPage from './page'

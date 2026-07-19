@@ -2,11 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { apiFetchMock } = vi.hoisted(() => ({
-  apiFetchMock: vi.fn(),
-}))
+const { apiFetchMock, pushMock, routerMock } = vi.hoisted(() => {
+  const pushMock = vi.fn()
+  return { apiFetchMock: vi.fn(), pushMock, routerMock: { push: pushMock } }
+})
 
 vi.mock('@/lib/api', () => ({ apiFetch: apiFetchMock }))
+vi.mock('next/navigation', () => ({ useRouter: () => routerMock }))
 
 import DashboardPage from './page'
 
@@ -26,6 +28,20 @@ const DASHBOARD_BODY = {
 describe('DashboardPage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
+    pushMock.mockReset()
+  })
+
+  it('redirects to login on a 401 (no session)', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/me/graph-status') {
+        return Promise.resolve(new Response(null, { status: 401 }))
+      }
+      return Promise.resolve(jsonResponse(DASHBOARD_BODY))
+    })
+
+    render(<DashboardPage />)
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/login'))
   })
 
   it('shows connection status, stats, and activity feed', async () => {

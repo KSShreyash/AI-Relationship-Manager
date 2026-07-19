@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
 import ScheduleActionItemPanel from '@/app/components/ScheduleActionItemPanel'
@@ -43,6 +43,7 @@ export default function ContactProfilePage() {
 }
 
 function ContactProfileContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const id = searchParams.get('id')
   const [state, setState] = useState<State>({ state: 'loading' })
@@ -54,6 +55,10 @@ function ContactProfileContent() {
     }
 
     const contactResponse = await apiFetch(`/api/contacts/${id}`)
+    if (contactResponse.status === 401) {
+      router.push('/login')
+      return
+    }
     if (contactResponse.status === 404) {
       setState({ state: 'not_found' })
       return
@@ -72,7 +77,7 @@ function ContactProfileContent() {
     const actionItems = await actionItemsResponse.json()
 
     setState({ state: 'ready', contact, actionItems })
-  }, [id])
+  }, [id, router])
 
   useEffect(() => {
     load()

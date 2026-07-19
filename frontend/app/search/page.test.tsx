@@ -1,11 +1,13 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { apiFetchMock } = vi.hoisted(() => ({
-  apiFetchMock: vi.fn(),
-}))
+const { apiFetchMock, pushMock, routerMock } = vi.hoisted(() => {
+  const pushMock = vi.fn()
+  return { apiFetchMock: vi.fn(), pushMock, routerMock: { push: pushMock } }
+})
 
 vi.mock('@/lib/api', () => ({ apiFetch: apiFetchMock }))
+vi.mock('next/navigation', () => ({ useRouter: () => routerMock }))
 
 import SearchPage from './page'
 
@@ -16,6 +18,20 @@ function jsonResponse(body: unknown, status = 200) {
 describe('SearchPage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
+    pushMock.mockReset()
+  })
+
+  it('redirects to login on a 401 (no session)', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))
+
+    render(<SearchPage />)
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'alice' } })
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(pushMock).toHaveBeenCalledWith('/login')
+
+    vi.useRealTimers()
   })
 
   it('shows a prompt before any query is typed', () => {

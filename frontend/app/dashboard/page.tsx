@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
 
@@ -21,6 +22,7 @@ type DashboardData = {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [status, setStatus] = useState<GraphStatus>({ state: 'loading' })
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [triggerError, setTriggerError] = useState<string | null>(null)
@@ -29,6 +31,10 @@ export default function DashboardPage() {
   const loadStatus = useCallback(async () => {
     const response = await apiFetch('/api/me/graph-status')
 
+    if (response.status === 401) {
+      router.push('/login')
+      return
+    }
     if (response.status === 409) {
       setStatus({ state: 'needs_reauth' })
       return

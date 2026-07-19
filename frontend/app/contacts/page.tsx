@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
 
@@ -13,6 +14,7 @@ type Contact = {
 }
 
 export default function ContactsPage() {
+  const router = useRouter()
   const [contacts, setContacts] = useState<Contact[] | null>(null)
   const [search, setSearch] = useState('')
   const requestId = useRef(0)
@@ -22,6 +24,10 @@ export default function ContactsPage() {
       const thisRequest = ++requestId.current
       const query = search ? `?q=${encodeURIComponent(search)}` : ''
       apiFetch(`/api/contacts${query}`).then(async (response) => {
+        if (response.status === 401) {
+          router.push('/login')
+          return
+        }
         if (!response.ok) return
         const body = await response.json()
         if (thisRequest === requestId.current) {
@@ -31,7 +37,7 @@ export default function ContactsPage() {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [search])
+  }, [search, router])
 
   return (
     <div className="p-6">

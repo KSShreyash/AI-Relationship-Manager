@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
 import ScheduleActionItemPanel from '@/app/components/ScheduleActionItemPanel'
@@ -28,6 +29,7 @@ function daysFromNow(dateStr: string): number {
 }
 
 export default function PlannerPage() {
+  const router = useRouter()
   const [items, setItems] = useState<ActionItem[]>([])
   const [direction, setDirection] = useState<Direction>('all')
   const [includeDone, setIncludeDone] = useState(false)
@@ -39,9 +41,13 @@ export default function PlannerPage() {
     if (includeDone) params.set('include_done', 'true')
     const query = params.toString()
     const response = await apiFetch(`/api/action-items${query ? `?${query}` : ''}`)
+    if (response.status === 401) {
+      router.push('/login')
+      return
+    }
     if (!response.ok) return
     setItems(await response.json())
-  }, [direction, includeDone])
+  }, [direction, includeDone, router])
 
   useEffect(() => {
     load()

@@ -1,11 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { apiFetchMock } = vi.hoisted(() => ({
-  apiFetchMock: vi.fn(),
-}))
+const { apiFetchMock, pushMock, routerMock } = vi.hoisted(() => {
+  const pushMock = vi.fn()
+  return { apiFetchMock: vi.fn(), pushMock, routerMock: { push: pushMock } }
+})
 
 vi.mock('@/lib/api', () => ({ apiFetch: apiFetchMock }))
+vi.mock('next/navigation', () => ({ useRouter: () => routerMock }))
 
 import PlannerPage from './page'
 
@@ -26,10 +28,19 @@ describe('PlannerPage', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(TODAY)
     apiFetchMock.mockReset()
+    pushMock.mockReset()
   })
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('redirects to login on a 401 (no session)', async () => {
+    apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))
+
+    render(<PlannerPage />)
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/login'))
   })
 
   it('groups open items into Overdue, Due this week, and No due date sections', async () => {

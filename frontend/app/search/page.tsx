@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
 
@@ -23,6 +24,7 @@ type ActionItem = {
 type Results = { contacts: Contact[]; action_items: ActionItem[] }
 
 export default function SearchPage() {
+  const router = useRouter()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Results | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -40,6 +42,10 @@ export default function SearchPage() {
       const thisRequest = ++requestId.current
       apiFetch(`/api/search?q=${encodeURIComponent(query)}`).then(async (response) => {
         if (thisRequest !== requestId.current) return
+        if (response.status === 401) {
+          router.push('/login')
+          return
+        }
         if (!response.ok) {
           setError('Something went wrong searching. Please try again.')
           return
@@ -50,7 +56,7 @@ export default function SearchPage() {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [query])
+  }, [query, router])
 
   return (
     <div className="p-6">

@@ -35,6 +35,14 @@ describe('PlannerPage', () => {
     vi.useRealTimers()
   })
 
+  it('shows an inline error instead of failing silently when the fetch throws', async () => {
+    apiFetchMock.mockRejectedValue(new Error('network error'))
+
+    render(<PlannerPage />)
+
+    await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
+  })
+
   it('redirects to login on a 401 (no session)', async () => {
     apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))
 

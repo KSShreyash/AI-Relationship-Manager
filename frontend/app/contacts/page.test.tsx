@@ -21,6 +21,18 @@ describe('ContactsPage', () => {
     pushMock.mockReset()
   })
 
+  it('shows an error instead of hanging on Loading when the fetch throws', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockRejectedValue(new Error('network error'))
+
+    render(<ContactsPage />)
+    await vi.advanceTimersByTimeAsync(300)
+
+    await vi.waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
+
+    vi.useRealTimers()
+  })
+
   it('redirects to login on a 401 (no session)', async () => {
     vi.useFakeTimers()
     apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))

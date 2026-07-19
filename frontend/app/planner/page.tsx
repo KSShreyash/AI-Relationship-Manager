@@ -36,17 +36,24 @@ export default function PlannerPage() {
   const [toggleError, setToggleError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams()
-    if (direction !== 'all') params.set('direction', direction)
-    if (includeDone) params.set('include_done', 'true')
-    const query = params.toString()
-    const response = await apiFetch(`/api/action-items${query ? `?${query}` : ''}`)
-    if (response.status === 401) {
-      router.push('/login')
-      return
+    try {
+      const params = new URLSearchParams()
+      if (direction !== 'all') params.set('direction', direction)
+      if (includeDone) params.set('include_done', 'true')
+      const query = params.toString()
+      const response = await apiFetch(`/api/action-items${query ? `?${query}` : ''}`)
+      if (response.status === 401) {
+        router.push('/login')
+        return
+      }
+      if (!response.ok) {
+        setToggleError('Something went wrong loading your action items. Please try again.')
+        return
+      }
+      setItems(await response.json())
+    } catch {
+      setToggleError('Something went wrong loading your action items. Please try again.')
     }
-    if (!response.ok) return
-    setItems(await response.json())
   }, [direction, includeDone, router])
 
   useEffect(() => {

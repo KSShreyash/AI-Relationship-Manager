@@ -31,6 +31,19 @@ describe('DashboardPage', () => {
     pushMock.mockReset()
   })
 
+  it('shows an error instead of hanging on Loading when the fetch throws', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/me/graph-status') {
+        return Promise.reject(new Error('network error'))
+      }
+      return Promise.resolve(jsonResponse(DASHBOARD_BODY))
+    })
+
+    render(<DashboardPage />)
+
+    await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
+  })
+
   it('redirects to login on a 401 (no session)', async () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/me/graph-status') {

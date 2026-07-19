@@ -30,6 +30,14 @@ describe('ContactProfilePage', () => {
     useSearchParamsMock.mockReturnValue(new URLSearchParams({ id: 'contact-1' }))
   })
 
+  it('shows an error instead of hanging on Loading when the fetch throws', async () => {
+    apiFetchMock.mockRejectedValue(new Error('network error'))
+
+    render(<ContactProfilePage />)
+
+    await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
+  })
+
   it('redirects to login on a 401 (no session)', async () => {
     apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))
 

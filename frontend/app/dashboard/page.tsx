@@ -29,32 +29,42 @@ export default function DashboardPage() {
   const [pending, setPending] = useState<'sync' | 'extract' | null>(null)
 
   const loadStatus = useCallback(async () => {
-    const response = await apiFetch('/api/me/graph-status')
+    try {
+      const response = await apiFetch('/api/me/graph-status')
 
-    if (response.status === 401) {
-      router.push('/login')
-      return
-    }
-    if (response.status === 409) {
-      setStatus({ state: 'needs_reauth' })
-      return
-    }
-    if (!response.ok) {
+      if (response.status === 401) {
+        router.push('/login')
+        return
+      }
+      if (response.status === 409) {
+        setStatus({ state: 'needs_reauth' })
+        return
+      }
+      if (!response.ok) {
+        setStatus({ state: 'error' })
+        return
+      }
+
+      const body = await response.json()
+      setStatus({
+        state: 'connected',
+        email: body.graph_me?.mail ?? body.graph_me?.userPrincipalName,
+      })
+    } catch {
       setStatus({ state: 'error' })
-      return
     }
-
-    const body = await response.json()
-    setStatus({
-      state: 'connected',
-      email: body.graph_me?.mail ?? body.graph_me?.userPrincipalName,
-    })
-  }, [])
+  }, [router])
 
   const loadDashboard = useCallback(async () => {
-    const response = await apiFetch('/api/dashboard')
-    if (!response.ok) return
-    setDashboard(await response.json())
+    try {
+      const response = await apiFetch('/api/dashboard')
+      if (!response.ok) return
+      setDashboard(await response.json())
+    } catch {
+      // Non-fatal: the connection status (loadStatus) already surfaces a
+      // page-level error if the backend is unreachable. A stats-fetch
+      // failure alone just leaves the stats section blank.
+    }
   }, [])
 
   useEffect(() => {

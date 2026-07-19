@@ -21,6 +21,19 @@ describe('SearchPage', () => {
     pushMock.mockReset()
   })
 
+  it('shows an inline error instead of failing silently when the fetch throws', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockRejectedValue(new Error('network error'))
+
+    render(<SearchPage />)
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'alice' } })
+    await vi.advanceTimersByTimeAsync(300)
+
+    await vi.waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
+
+    vi.useRealTimers()
+  })
+
   it('redirects to login on a 401 (no session)', async () => {
     vi.useFakeTimers()
     apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))

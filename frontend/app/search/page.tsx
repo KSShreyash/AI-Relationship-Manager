@@ -40,19 +40,25 @@ export default function SearchPage() {
 
     const timer = setTimeout(() => {
       const thisRequest = ++requestId.current
-      apiFetch(`/api/search?q=${encodeURIComponent(query)}`).then(async (response) => {
-        if (thisRequest !== requestId.current) return
-        if (response.status === 401) {
-          router.push('/login')
-          return
-        }
-        if (!response.ok) {
-          setError('Something went wrong searching. Please try again.')
-          return
-        }
-        setError(null)
-        setResults(await response.json())
-      })
+      apiFetch(`/api/search?q=${encodeURIComponent(query)}`)
+        .then(async (response) => {
+          if (thisRequest !== requestId.current) return
+          if (response.status === 401) {
+            router.push('/login')
+            return
+          }
+          if (!response.ok) {
+            setError('Something went wrong searching. Please try again.')
+            return
+          }
+          setError(null)
+          setResults(await response.json())
+        })
+        .catch(() => {
+          if (thisRequest === requestId.current) {
+            setError('Something went wrong searching. Please try again.')
+          }
+        })
     }, 300)
 
     return () => clearTimeout(timer)

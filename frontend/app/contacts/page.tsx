@@ -16,6 +16,7 @@ type Contact = {
 export default function ContactsPage() {
   const router = useRouter()
   const [contacts, setContacts] = useState<Contact[] | null>(null)
+  const [error, setError] = useState(false)
   const [search, setSearch] = useState('')
   const requestId = useRef(0)
 
@@ -23,17 +24,25 @@ export default function ContactsPage() {
     const timer = setTimeout(() => {
       const thisRequest = ++requestId.current
       const query = search ? `?q=${encodeURIComponent(search)}` : ''
-      apiFetch(`/api/contacts${query}`).then(async (response) => {
-        if (response.status === 401) {
-          router.push('/login')
-          return
-        }
-        if (!response.ok) return
-        const body = await response.json()
-        if (thisRequest === requestId.current) {
-          setContacts(body)
-        }
-      })
+      apiFetch(`/api/contacts${query}`)
+        .then(async (response) => {
+          if (response.status === 401) {
+            router.push('/login')
+            return
+          }
+          if (!response.ok) {
+            if (thisRequest === requestId.current) setError(true)
+            return
+          }
+          const body = await response.json()
+          if (thisRequest === requestId.current) {
+            setError(false)
+            setContacts(body)
+          }
+        })
+        .catch(() => {
+          if (thisRequest === requestId.current) setError(true)
+        })
     }, 300)
 
     return () => clearTimeout(timer)
@@ -49,8 +58,10 @@ export default function ContactsPage() {
         className="rounded border border-gray-300 px-3 py-2"
       />
 
+      {error && <p role="alert" className="mt-4 text-red-600">Something went wrong loading your contacts.</p>}
+
       {contacts === null ? (
-        <p className="mt-4">Loading…</p>
+        error ? null : <p className="mt-4">Loading…</p>
       ) : contacts.length === 0 ? (
         <p className="mt-4">No contacts yet — sync and extract to get started.</p>
       ) : (

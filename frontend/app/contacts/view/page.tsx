@@ -54,29 +54,33 @@ function ContactProfileContent() {
       return
     }
 
-    const contactResponse = await apiFetch(`/api/contacts/${id}`)
-    if (contactResponse.status === 401) {
-      router.push('/login')
-      return
-    }
-    if (contactResponse.status === 404) {
-      setState({ state: 'not_found' })
-      return
-    }
-    if (!contactResponse.ok) {
-      setState({ state: 'error' })
-      return
-    }
-    const contact = await contactResponse.json()
+    try {
+      const contactResponse = await apiFetch(`/api/contacts/${id}`)
+      if (contactResponse.status === 401) {
+        router.push('/login')
+        return
+      }
+      if (contactResponse.status === 404) {
+        setState({ state: 'not_found' })
+        return
+      }
+      if (!contactResponse.ok) {
+        setState({ state: 'error' })
+        return
+      }
+      const contact = await contactResponse.json()
 
-    const actionItemsResponse = await apiFetch(`/api/contacts/${id}/action-items`)
-    if (!actionItemsResponse.ok) {
-      setState({ state: 'error' })
-      return
-    }
-    const actionItems = await actionItemsResponse.json()
+      const actionItemsResponse = await apiFetch(`/api/contacts/${id}/action-items`)
+      if (!actionItemsResponse.ok) {
+        setState({ state: 'error' })
+        return
+      }
+      const actionItems = await actionItemsResponse.json()
 
-    setState({ state: 'ready', contact, actionItems })
+      setState({ state: 'ready', contact, actionItems })
+    } catch {
+      setState({ state: 'error' })
+    }
   }, [id, router])
 
   useEffect(() => {

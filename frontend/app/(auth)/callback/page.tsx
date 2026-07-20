@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { apiBaseUrl } from '@/lib/api'
 import { createClient } from '@/lib/supabase/client'
 import { GRAPH_RESOURCE_SCOPES } from '@/lib/graph-scopes'
 
@@ -39,7 +40,7 @@ export default function CallbackPage() {
         let response: Response
         try {
           response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/auth/graph-tokens`,
+            `${apiBaseUrl()}/api/auth/graph-tokens`,
             {
               method: 'POST',
               headers: {

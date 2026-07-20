@@ -6,7 +6,7 @@ vi.mock('./supabase/client', () => ({
   createClient: () => ({ auth: { getSession: getSessionMock } }),
 }))
 
-import { apiFetch } from './api'
+import { apiBaseUrl, apiFetch } from './api'
 
 describe('apiFetch', () => {
   beforeEach(() => {
@@ -34,5 +34,11 @@ describe('apiFetch', () => {
     const call = (global.fetch as any).mock.calls[0]
     const headers: Headers = call[1].headers
     expect(headers.get('Authorization')).toBeNull()
+  })
+
+  it('strips stray whitespace and a trailing slash from the configured base URL', () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = '  https://api.example.com/  '
+
+    expect(apiBaseUrl()).toBe('https://api.example.com')
   })
 })

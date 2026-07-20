@@ -22,4 +22,4 @@ services:
       - key: MS_AUTHORITY
         value: https://login.microsoftonline.com/common
       - key: CORS_ALLOW_ORIGINS
-        value: http://localhost:3000
+        value: https://ai-relationship-manager.pages.dev,http://localhost:3000

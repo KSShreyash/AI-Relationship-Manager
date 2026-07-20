@@ -67,4 +67,23 @@ describe('CallbackPage', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
   })
+
+  it('shows an error instead of hanging when the graph-tokens request fails', async () => {
+    getSessionMock.mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'supabase-jwt',
+          provider_token: 'graph-access',
+          provider_refresh_token: 'graph-refresh',
+        },
+      },
+      error: null,
+    })
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+
+    render(<CallbackPage />)
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(pushMock).not.toHaveBeenCalled()
+  })
 })

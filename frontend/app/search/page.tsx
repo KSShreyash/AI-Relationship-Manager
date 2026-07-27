@@ -1,9 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { Search as SearchIcon } from 'lucide-react'
 
 import { apiFetch } from '@/lib/api'
+import { getInitials } from '@/lib/getInitials'
+import { Card } from '@/app/components/ui/Card'
+import { EmptyState } from '@/app/components/ui/EmptyState'
+import { Input } from '@/app/components/ui/Input'
 
 type Contact = {
   id: string
@@ -22,6 +27,21 @@ type ActionItem = {
 }
 
 type Results = { contacts: Contact[]; action_items: ActionItem[] }
+
+function highlightMatch(text: string, query: string): ReactNode {
+  if (!query) return text
+  const index = text.toLowerCase().indexOf(query.toLowerCase())
+  if (index === -1) return text
+  return (
+    <>
+      {text.slice(0, index)}
+      <mark className="rounded bg-[var(--color-accent)]/20 text-[var(--color-accent)]">
+        {text.slice(index, index + query.length)}
+      </mark>
+      {text.slice(index + query.length)}
+    </>
+  )
+}
 
 export default function SearchPage() {
   const router = useRouter()
@@ -66,57 +86,73 @@ export default function SearchPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-xl font-semibold text-white">Search</h1>
+      <h1 className="text-xl font-bold text-[var(--color-fg)]">Search</h1>
 
-      <input
-        type="text"
-        placeholder="Search contacts and action items…"
+      <Input
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="mt-4 w-full max-w-md rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:border-emerald-500 focus:outline-none"
+        onChange={setQuery}
+        placeholder="Search contacts and action items…"
+        aria-label="Search"
+        className="mt-4 max-w-md"
       />
 
-      {error && <p role="alert" className="mt-3 text-sm text-red-400">{error}</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-[var(--color-danger)]">{error}</p>}
 
       {results === null ? (
-        <p className="mt-4 text-sm text-neutral-400">Type to search your contacts and action items.</p>
+        <EmptyState
+          icon={SearchIcon}
+          title="Type to search your contacts and action items."
+          className="mt-6"
+        />
       ) : (
         <>
-          <h2 className="mt-6 text-sm font-semibold text-white">Contacts</h2>
+          <h2 className="mt-6 text-sm font-semibold text-[var(--color-fg)]">Contacts</h2>
           {results.contacts.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-400">No matching contacts.</p>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">No matching contacts.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
+            <div className="mt-2 space-y-3">
               {results.contacts.map((contact) => (
-                <li key={contact.id} className="px-4 py-3 text-sm text-neutral-200">
-                  <a href={`/contacts/view?id=${contact.id}`} className="text-emerald-400 hover:underline">
-                    {contact.display_name ?? contact.email_address}
-                  </a>
-                  {contact.notes && <span className="text-neutral-400"> — {contact.notes}</span>}
-                </li>
+                <Card key={contact.id} className="flex items-center gap-4">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] text-sm font-semibold text-[var(--color-accent)]">
+                    {getInitials(contact.display_name, contact.email_address)}
+                  </span>
+                  <div className="min-w-0">
+                    <a
+                      href={`/contacts/view?id=${contact.id}`}
+                      className="text-sm font-medium text-[var(--color-fg)] hover:underline"
+                    >
+                      {highlightMatch(contact.display_name ?? contact.email_address ?? '', query)}
+                    </a>
+                    {contact.notes && (
+                      <p className="truncate text-xs text-[var(--color-muted)]">{contact.notes}</p>
+                    )}
+                  </div>
+                </Card>
               ))}
-            </ul>
+            </div>
           )}
 
-          <h2 className="mt-6 text-sm font-semibold text-white">Action Items</h2>
+          <h2 className="mt-6 text-sm font-semibold text-[var(--color-fg)]">Action Items</h2>
           {results.action_items.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-400">No matching action items.</p>
+            <p className="mt-2 text-sm text-[var(--color-muted)]">No matching action items.</p>
           ) : (
-            <ul className="mt-2 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
+            <div className="mt-2 space-y-3">
               {results.action_items.map((item) => (
-                <li key={item.id} className="px-4 py-3 text-sm text-neutral-200">
-                  {item.text}
+                <Card key={item.id} className="flex items-center justify-between gap-4">
+                  <p className="min-w-0 truncate text-sm text-[var(--color-fg)]">
+                    {highlightMatch(item.text, query)}
+                  </p>
                   {item.contact && (
-                    <>
-                      {' — '}
-                      <a href={`/contacts/view?id=${item.contact.id}`} className="text-emerald-400 hover:underline">
-                        {item.contact.display_name ?? item.contact.email_address}
-                      </a>
-                    </>
+                    <a
+                      href={`/contacts/view?id=${item.contact.id}`}
+                      className="shrink-0 text-xs font-medium text-[var(--color-accent)] hover:underline"
+                    >
+                      {item.contact.display_name ?? item.contact.email_address}
+                    </a>
                   )}
-                </li>
+                </Card>
               ))}
-            </ul>
+            </div>
           )}
         </>
       )}

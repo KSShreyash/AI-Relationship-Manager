@@ -74,12 +74,36 @@ describe('SearchPage', () => {
     await vi.advanceTimersByTimeAsync(300)
 
     expect(apiFetchMock).toHaveBeenCalledWith('/api/search?q=alice')
-    await vi.waitFor(() => expect(screen.getByText(/follow up with alice/i)).toBeInTheDocument())
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: /^contacts$/i })).toBeInTheDocument())
+
+    const actionItemsHeading = screen.getByRole('heading', { name: /^action items$/i })
+    const actionItemsList = actionItemsHeading.nextElementSibling as HTMLElement
+    expect(actionItemsList.textContent).toMatch(/follow up with alice/i)
 
     const contactsHeading = screen.getByRole('heading', { name: /^contacts$/i })
     const contactsList = contactsHeading.nextElementSibling as HTMLElement
-    expect(within(contactsList).getByRole('link', { name: /alice johnson/i })).toHaveAttribute('href', '/contacts/view?id=c1')
+    expect(within(contactsList).getByRole('link', { name: 'Alice Johnson' })).toHaveAttribute('href', '/contacts/view?id=c1')
     expect(screen.getByText(/discussed the budget/i)).toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('highlights the matched query substring in a result', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        contacts: [{ id: 'c1', display_name: 'Alice Johnson', email_address: 'alice@example.com', notes: null }],
+        action_items: [],
+      })
+    )
+
+    render(<SearchPage />)
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'alice' } })
+    await vi.advanceTimersByTimeAsync(300)
+
+    await vi.waitFor(() => expect(screen.getByRole('link', { name: 'Alice Johnson' })).toBeInTheDocument())
+    const mark = screen.getByRole('link', { name: 'Alice Johnson' }).querySelector('mark')
+    expect(mark).toHaveTextContent('Alice')
 
     vi.useRealTimers()
   })
@@ -111,13 +135,13 @@ describe('SearchPage', () => {
     const input = screen.getByPlaceholderText(/search/i)
     fireEvent.change(input, { target: { value: 'kept' } })
     await vi.advanceTimersByTimeAsync(300)
-    await vi.waitFor(() => expect(screen.getByText('Kept Contact')).toBeInTheDocument())
+    await vi.waitFor(() => expect(screen.getByRole('link', { name: 'Kept Contact' })).toBeInTheDocument())
 
     fireEvent.change(input, { target: { value: 'kept2' } })
     await vi.advanceTimersByTimeAsync(300)
 
     await vi.waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
-    expect(screen.getByText('Kept Contact')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Kept Contact' })).toBeInTheDocument()
 
     vi.useRealTimers()
   })
@@ -142,7 +166,7 @@ describe('SearchPage', () => {
       contacts: [{ id: '2', display_name: 'Smith', email_address: null, notes: null }],
       action_items: [],
     }))
-    await vi.waitFor(() => expect(screen.getByText('Smith')).toBeInTheDocument())
+    await vi.waitFor(() => expect(screen.getByRole('link', { name: 'Smith' })).toBeInTheDocument())
 
     resolveFirst(jsonResponse({
       contacts: [{ id: '3', display_name: 'Smiley', email_address: null, notes: null }],
@@ -150,7 +174,7 @@ describe('SearchPage', () => {
     }))
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(screen.getByText('Smith')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Smith' })).toBeInTheDocument()
     expect(screen.queryByText('Smiley')).not.toBeInTheDocument()
 
     vi.useRealTimers()

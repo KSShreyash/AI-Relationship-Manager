@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ChevronsLeft, ChevronsRight, LayoutDashboard, ListTodo, LogOut, Search, Users } from 'lucide-react'
 
+import { apiFetch } from '@/lib/api'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/app/components/ui/Button'
 
@@ -27,6 +28,24 @@ export default function NavBar() {
     const stored = window.localStorage.getItem(COLLAPSE_STORAGE_KEY)
     if (stored === 'true') setCollapsed(true)
   }, [])
+
+  const [email, setEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (CHROME_HIDDEN_PATHS.has(pathname)) return
+    let cancelled = false
+    apiFetch('/api/me/graph-status')
+      .then(async (response) => {
+        if (!response.ok || cancelled) return
+        const body = await response.json()
+        const address = body.graph_me?.mail ?? body.graph_me?.userPrincipalName
+        if (address && !cancelled) setEmail(address)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
 
   if (CHROME_HIDDEN_PATHS.has(pathname)) return null
 
@@ -96,6 +115,15 @@ export default function NavBar() {
           )
         })}
       </div>
+
+      {email && (
+        <div className="mt-4 flex items-center gap-3 border-t border-[var(--color-border)] px-1 pt-4">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] text-xs font-semibold text-[var(--color-accent)]">
+            {email.charAt(0).toUpperCase()}
+          </span>
+          {!collapsed && <span className="truncate text-sm text-[var(--color-fg)]">{email}</span>}
+        </div>
+      )}
 
       <button
         onClick={handleSignOut}

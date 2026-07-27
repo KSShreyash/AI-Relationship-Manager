@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }))
 const signOutMock = vi.fn()
 
+vi.mock('@/lib/api', () => ({ apiFetch: apiFetchMock }))
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({ auth: { signOut: signOutMock } }),
 }))
@@ -21,6 +23,8 @@ describe('NavBar', () => {
   beforeEach(() => {
     signOutMock.mockReset()
     pushMock.mockReset()
+    apiFetchMock.mockReset()
+    apiFetchMock.mockResolvedValue(new Response(null, { status: 401 }))
     window.localStorage.clear()
     mockPathname = '/dashboard'
   })
@@ -67,5 +71,20 @@ describe('NavBar', () => {
     window.localStorage.setItem('nav-collapsed', 'true')
     render(<NavBar />)
     expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeInTheDocument()
+  })
+
+  it('shows the connected user email and initial in the footer', async () => {
+    apiFetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ graph_me: { mail: 'jane@example.com' } }), { status: 200 })
+    )
+    render(<NavBar />)
+    await waitFor(() => expect(screen.getByText('jane@example.com')).toBeInTheDocument())
+    expect(screen.getByText('J')).toBeInTheDocument()
+  })
+
+  it('does not fetch graph-status on chrome-hidden paths', () => {
+    mockPathname = '/login'
+    render(<NavBar />)
+    expect(apiFetchMock).not.toHaveBeenCalled()
   })
 })

@@ -32,7 +32,7 @@ export default function ScheduleActionItemPanel({
 
   if (scheduledCalendarEventId) {
     return (
-      <span className="ml-2 text-neutral-400">
+      <span className="ml-2 text-[var(--color-muted)]">
         Scheduled: {scheduledStartTime ? new Date(scheduledStartTime).toLocaleString() : 'yes'}
       </span>
     )
@@ -70,7 +70,7 @@ export default function ScheduleActionItemPanel({
 
   if (!open) {
     return (
-      <button onClick={openPanel} className="ml-2 text-emerald-400 hover:underline">
+      <button onClick={openPanel} className="ml-2 text-sm font-medium text-[var(--color-accent)] hover:underline">
         Schedule
       </button>
     )
@@ -78,14 +78,14 @@ export default function ScheduleActionItemPanel({
 
   return (
     <span className="ml-2 inline-block">
-      {error && <p role="alert" className="text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-[var(--color-danger)]">{error}</p>}
       {slots === null ? (
-        <span className="text-neutral-400">Loading suggestions…</span>
+        <span className="text-[var(--color-muted)]">Loading suggestions…</span>
       ) : slots.length === 0 ? (
-        <span className="text-neutral-400">No open slots found.</span>
+        <span className="text-[var(--color-muted)]">No open slots found.</span>
       ) : (
         <>
-          <label className="text-neutral-300">
+          <label className="text-[var(--color-fg)]">
             <input
               type="checkbox"
               checked={onlineMeeting}
@@ -97,7 +97,11 @@ export default function ScheduleActionItemPanel({
           <ul>
             {slots.map((slot) => (
               <li key={slot.start}>
-                <button onClick={() => confirm(slot)} disabled={submitting} className="text-emerald-400 hover:underline disabled:opacity-50">
+                <button
+                  onClick={() => confirm(slot)}
+                  disabled={submitting}
+                  className="text-sm font-medium text-[var(--color-accent)] hover:underline disabled:opacity-50"
+                >
                   {new Date(slot.start).toLocaleString()}
                 </button>
               </li>

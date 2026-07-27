@@ -29,4 +29,15 @@ describe('LoginPage', () => {
       })
     )
   })
+
+  it('renders the hero headline and feature bullets', () => {
+    render(<LoginPage />)
+
+    expect(
+      screen.getByRole('heading', { name: /stop losing relationships/i })
+    ).toBeInTheDocument()
+    expect(screen.getByText(/extracts action items from email & calendar/i)).toBeInTheDocument()
+    expect(screen.getByText(/tracks who owes who what/i)).toBeInTheDocument()
+    expect(screen.getByText(/books follow-ups directly on your calendar/i)).toBeInTheDocument()
+  })
 })

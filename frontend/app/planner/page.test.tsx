@@ -57,7 +57,7 @@ describe('PlannerPage', () => {
     render(<PlannerPage />)
 
     await waitFor(() => expect(screen.getByText('Overdue task')).toBeInTheDocument())
-    expect(screen.getByText('Due this week', { selector: 'li' })).toBeInTheDocument()
+    expect(screen.getByText('Due this week', { selector: 'p' })).toBeInTheDocument()
     expect(screen.getByText('No due date task')).toBeInTheDocument()
   })
 
@@ -85,7 +85,7 @@ describe('PlannerPage', () => {
     render(<PlannerPage />)
     await waitFor(() => expect(screen.getByText('Overdue task')).toBeInTheDocument())
 
-    fireEvent.click(screen.getAllByRole('button', { name: /mark done/i })[0])
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /mark done/i })[0])
 
     await waitFor(() =>
       expect(apiFetchMock).toHaveBeenCalledWith('/api/action-items/1', {
@@ -107,13 +107,13 @@ describe('PlannerPage', () => {
     render(<PlannerPage />)
     await waitFor(() => expect(screen.getByText('Overdue task')).toBeInTheDocument())
 
-    fireEvent.click(screen.getAllByRole('button', { name: /mark done/i })[0])
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /mark done/i })[0])
 
     await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
     expect(screen.getByText('Overdue task')).toBeInTheDocument()
   })
 
-  it('shows the Later group, the Completed section, and a contact name when present', async () => {
+  it('shows the Later group, the Completed section, and a contact avatar/name when present', async () => {
     const EXTENDED_ITEMS = [
       { id: '4', text: 'Later task', direction: 'mine', status: 'open', due_date: '2026-08-01', contact: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
       { id: '5', text: 'Done task', direction: 'mine', status: 'done', due_date: '2026-07-15', contact: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
@@ -129,6 +129,7 @@ describe('PlannerPage', () => {
     expect(within(laterHeading.nextElementSibling as HTMLElement).getByText('Later task')).toBeInTheDocument()
 
     expect(screen.getByText(/Dana/)).toBeInTheDocument()
+    expect(screen.getByText('D')).toBeInTheDocument()
 
     expect(screen.queryByText('Done task')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Completed' })).not.toBeInTheDocument()

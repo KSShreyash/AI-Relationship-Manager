@@ -25,6 +25,12 @@ const DASHBOARD_BODY = {
   ],
 }
 
+const ACTION_ITEMS_BODY = [
+  { id: 'i1', status: 'open' },
+  { id: 'i2', status: 'open' },
+  { id: 'i3', status: 'done' },
+]
+
 describe('DashboardPage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
@@ -35,6 +41,9 @@ describe('DashboardPage', () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/me/graph-status') {
         return Promise.reject(new Error('network error'))
+      }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
       }
       return Promise.resolve(jsonResponse(DASHBOARD_BODY))
     })
@@ -48,6 +57,9 @@ describe('DashboardPage', () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/me/graph-status') {
         return Promise.resolve(new Response(null, { status: 401 }))
+      }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
       }
       return Promise.resolve(jsonResponse(DASHBOARD_BODY))
     })
@@ -65,6 +77,9 @@ describe('DashboardPage', () => {
       if (path === '/api/dashboard') {
         return Promise.resolve(jsonResponse(DASHBOARD_BODY))
       }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
+      }
       throw new Error(`Unexpected path: ${path}`)
     })
 
@@ -81,6 +96,9 @@ describe('DashboardPage', () => {
     apiFetchMock.mockImplementation((path: string) => {
       if (path === '/api/me/graph-status') {
         return Promise.resolve(new Response(null, { status: 409 }))
+      }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
       }
       return Promise.resolve(jsonResponse(DASHBOARD_BODY))
     })
@@ -100,6 +118,9 @@ describe('DashboardPage', () => {
       }
       if (path === '/api/dashboard') {
         return Promise.resolve(jsonResponse(DASHBOARD_BODY))
+      }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
       }
       if (path === '/api/sync/run/me' && init?.method === 'POST') {
         return Promise.resolve(jsonResponse({ status: 'ok' }))
@@ -126,6 +147,9 @@ describe('DashboardPage', () => {
       if (path === '/api/dashboard') {
         return Promise.resolve(jsonResponse(DASHBOARD_BODY))
       }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
+      }
       if (path === '/api/sync/run/me' && init?.method === 'POST') {
         return Promise.resolve(new Response(null, { status: 500 }))
       }
@@ -140,5 +164,44 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
     expect(button).not.toBeDisabled()
+  })
+
+  it('shows the tasks-remaining gauge with the real open/total counts', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/me/graph-status') {
+        return Promise.resolve(jsonResponse({ graph_me: { mail: 'user@example.com' } }))
+      }
+      if (path === '/api/dashboard') {
+        return Promise.resolve(jsonResponse(DASHBOARD_BODY))
+      }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
+      }
+      throw new Error(`Unexpected path: ${path}`)
+    })
+
+    render(<DashboardPage />)
+
+    await waitFor(() => expect(screen.getByText('2 open of 3 total')).toBeInTheDocument())
+  })
+
+  it('leaves the gauge section blank when the action-items fetch fails', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/me/graph-status') {
+        return Promise.resolve(jsonResponse({ graph_me: { mail: 'user@example.com' } }))
+      }
+      if (path === '/api/dashboard') {
+        return Promise.resolve(jsonResponse(DASHBOARD_BODY))
+      }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(new Response(null, { status: 500 }))
+      }
+      throw new Error(`Unexpected path: ${path}`)
+    })
+
+    render(<DashboardPage />)
+
+    await waitFor(() => expect(screen.getByText('Connected as user@example.com')).toBeInTheDocument())
+    expect(screen.queryByText(/open of .* total/)).not.toBeInTheDocument()
   })
 })

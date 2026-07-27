@@ -16,6 +16,7 @@
   --color-danger: #F87171;
   --color-danger-border: #4A2326;
   --color-danger-surface: #2A1214;
+  --color-warning: #FBBF24;
 }
 
 @theme inline {

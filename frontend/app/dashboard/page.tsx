@@ -7,6 +7,7 @@ import { ListChecks, ListPlus, UserRound, Users } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
+import { TasksRemainingGauge } from '@/app/components/TasksRemainingGauge'
 
 type GraphStatus =
   | { state: 'loading' }
@@ -70,10 +71,25 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const [taskTotals, setTaskTotals] = useState<{ open: number; total: number } | null>(null)
+
+  const loadTaskTotals = useCallback(async () => {
+    try {
+      const response = await apiFetch('/api/action-items?include_done=true')
+      if (!response.ok) return
+      const items: { status: 'open' | 'done' }[] = await response.json()
+      const open = items.filter((item) => item.status === 'open').length
+      setTaskTotals({ open, total: items.length })
+    } catch {
+      // Non-fatal: leaves the gauge section blank, same treatment as loadDashboard's fetch failure.
+    }
+  }, [])
+
   useEffect(() => {
     loadStatus()
     loadDashboard()
-  }, [loadStatus, loadDashboard])
+    loadTaskTotals()
+  }, [loadStatus, loadDashboard, loadTaskTotals])
 
   async function runTrigger(kind: 'sync' | 'extract') {
     setPending(kind)
@@ -160,6 +176,12 @@ export default function DashboardPage() {
               </div>
             </Card>
           </div>
+
+          {taskTotals && (
+            <Card className="mt-6 flex items-center justify-center p-8">
+              <TasksRemainingGauge open={taskTotals.open} total={taskTotals.total} />
+            </Card>
+          )}
 
           <Card className="mt-6">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">Recent activity</h2>

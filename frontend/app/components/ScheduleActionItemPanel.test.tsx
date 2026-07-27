@@ -129,4 +129,42 @@ describe('ScheduleActionItemPanel', () => {
     await waitFor(() => expect(screen.getByText(/could not schedule/i)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /2026/i })).toBeInTheDocument()
   })
+
+  it('reflects the open state via aria-expanded on the trigger', async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse([{ start: '2026-07-20T14:00:00Z', end: '2026-07-20T14:30:00Z' }])
+    )
+
+    render(
+      <ScheduleActionItemPanel
+        itemId="item-1" scheduledCalendarEventId={null} scheduledStartTime={null}
+        contact={CONTACT} onScheduled={vi.fn()}
+      />
+    )
+    const trigger = screen.getByRole('button', { name: /schedule/i })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(trigger)
+
+    await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'true'))
+  })
+
+  it('closes the panel when the close button is clicked', async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse([{ start: '2026-07-20T14:00:00Z', end: '2026-07-20T14:30:00Z' }])
+    )
+
+    render(
+      <ScheduleActionItemPanel
+        itemId="item-1" scheduledCalendarEventId={null} scheduledStartTime={null}
+        contact={CONTACT} onScheduled={vi.fn()}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /schedule/i }))
+    await screen.findByRole('button', { name: /2026/i })
+
+    fireEvent.click(screen.getByRole('button', { name: /close/i }))
+
+    expect(screen.queryByRole('button', { name: /2026/i })).not.toBeInTheDocument()
+  })
 })

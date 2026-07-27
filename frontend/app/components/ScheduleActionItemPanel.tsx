@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { X } from 'lucide-react'
 
 import { apiFetch } from '@/lib/api'
 
@@ -50,6 +52,10 @@ export default function ScheduleActionItemPanel({
     setSlots(await response.json())
   }
 
+  function closePanel() {
+    setOpen(false)
+  }
+
   async function confirm(slot: Slot) {
     setError(null)
     setSubmitting(true)
@@ -68,46 +74,72 @@ export default function ScheduleActionItemPanel({
     onScheduled()
   }
 
-  if (!open) {
-    return (
-      <button onClick={openPanel} className="ml-2 text-sm font-medium text-[var(--color-accent)] hover:underline">
+  return (
+    <span className="relative ml-2 inline-block">
+      <button
+        onClick={open ? closePanel : openPanel}
+        aria-expanded={open}
+        className="text-sm font-medium text-[var(--color-accent)] hover:underline"
+      >
         Schedule
       </button>
-    )
-  }
 
-  return (
-    <span className="ml-2 inline-block">
-      {error && <p role="alert" className="text-[var(--color-danger)]">{error}</p>}
-      {slots === null ? (
-        <span className="text-[var(--color-muted)]">Loading suggestions…</span>
-      ) : slots.length === 0 ? (
-        <span className="text-[var(--color-muted)]">No open slots found.</span>
-      ) : (
-        <>
-          <label className="text-[var(--color-fg)]">
-            <input
-              type="checkbox"
-              checked={onlineMeeting}
-              onChange={(e) => setOnlineMeeting(e.target.checked)}
-              disabled={submitting}
-            />
-            {' '}Online meeting
-          </label>
-          <ul>
-            {slots.map((slot) => (
-              <li key={slot.start}>
-                <button
-                  onClick={() => confirm(slot)}
-                  disabled={submitting}
-                  className="text-sm font-medium text-[var(--color-accent)] hover:underline disabled:opacity-50"
-                >
-                  {new Date(slot.start).toLocaleString()}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="absolute left-0 top-full z-10 mt-2 w-72 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-lg"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-[var(--color-fg)]">Pick a time</span>
+            <button
+              onClick={closePanel}
+              aria-label="Close"
+              className="text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+
+          {error && <p role="alert" className="mt-2 text-sm text-[var(--color-danger)]">{error}</p>}
+
+          {slots === null ? (
+            <p className="mt-3 text-sm text-[var(--color-muted)]">Loading suggestions…</p>
+          ) : slots.length === 0 ? (
+            <p className="mt-3 text-sm text-[var(--color-muted)]">No open slots found.</p>
+          ) : (
+            <>
+              <label className="mt-3 flex items-center justify-between text-sm text-[var(--color-fg)]">
+                Online meeting
+                <span className="relative inline-flex h-5 w-9 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={onlineMeeting}
+                    onChange={(e) => setOnlineMeeting(e.target.checked)}
+                    disabled={submitting}
+                    className="peer sr-only"
+                  />
+                  <span className="absolute inset-0 rounded-full bg-[var(--color-border)] transition-colors peer-checked:bg-[var(--color-accent)]" />
+                  <span className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-[var(--color-fg)] transition-transform peer-checked:translate-x-4" />
+                </span>
+              </label>
+
+              <div className={`mt-3 grid grid-cols-2 gap-2 ${submitting ? 'opacity-50' : ''}`}>
+                {slots.map((slot) => (
+                  <button
+                    key={slot.start}
+                    onClick={() => confirm(slot)}
+                    disabled={submitting}
+                    className="rounded-[var(--radius-card)] border border-[var(--color-border)] px-2 py-2 text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 disabled:pointer-events-none"
+                  >
+                    {new Date(slot.start).toLocaleString()}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </motion.div>
       )}
     </span>
   )

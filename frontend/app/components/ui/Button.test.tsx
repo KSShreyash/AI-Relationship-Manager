@@ -31,4 +31,9 @@ describe('Button', () => {
     render(<Button variant="danger">Delete</Button>)
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveClass('text-[var(--color-danger)]')
   })
+
+  it('applies an aria-label when provided', () => {
+    render(<Button aria-label="Collapse sidebar">×</Button>)
+    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument()
+  })
 })

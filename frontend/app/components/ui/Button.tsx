@@ -13,6 +13,7 @@ type ButtonProps = {
   onClick?: () => void
   type?: 'button' | 'submit' | 'reset'
   disabled?: boolean
+  'aria-label'?: string
 }
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
@@ -30,12 +31,14 @@ export function Button({
   onClick,
   type = 'button',
   disabled = false,
+  'aria-label': ariaLabel,
 }: ButtonProps) {
   return (
     <motion.button
       type={type}
       onClick={onClick}
       disabled={disabled}
+      aria-label={ariaLabel}
       whileTap={disabled ? undefined : { scale: 0.98 }}
       whileHover={disabled ? undefined : { y: -1 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}

@@ -29,6 +29,6 @@ describe('Button', () => {
 
   it('applies the danger variant class', () => {
     render(<Button variant="danger">Delete</Button>)
-    expect(screen.getByRole('button', { name: 'Delete' })).toHaveClass('text-red-400')
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveClass('text-[var(--color-danger)]')
   })
 })

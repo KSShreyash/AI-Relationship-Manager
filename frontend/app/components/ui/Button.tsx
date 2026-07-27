@@ -20,7 +20,7 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   secondary:
     'border border-[var(--color-border)] bg-transparent text-[var(--color-fg)] hover:border-[var(--color-accent)]',
   ghost: 'text-[var(--color-muted)] hover:text-[var(--color-fg)]',
-  danger: 'border border-red-900/60 text-red-400 hover:bg-red-950/40',
+  danger: 'border border-[var(--color-danger-border)] text-[var(--color-danger)] hover:bg-[var(--color-danger-surface)]',
 }
 
 export function Button({

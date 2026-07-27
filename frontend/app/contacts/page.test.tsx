@@ -45,7 +45,7 @@ describe('ContactsPage', () => {
     vi.useRealTimers()
   })
 
-  it('renders contacts sorted by recency with their open action item count', async () => {
+  it('renders contacts with their open action item count and a working link', async () => {
     apiFetchMock.mockResolvedValue(
       jsonResponse([
         { id: '1', email_address: 'alice@example.com', display_name: 'Alice', open_action_item_count: 2, updated_at: '2026-07-17T10:00:00Z' },
@@ -55,7 +55,7 @@ describe('ContactsPage', () => {
     render(<ContactsPage />)
 
     await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument())
-    expect(screen.getByText(/2/)).toBeInTheDocument()
+    expect(screen.getByText('2 open')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /alice/i })).toHaveAttribute('href', '/contacts/view?id=1')
   })
 
@@ -67,6 +67,28 @@ describe('ContactsPage', () => {
     await waitFor(() =>
       expect(screen.getByText(/no contacts yet/i)).toBeInTheDocument()
     )
+  })
+
+  it('sorts by recency by default, and alphabetically when Name is selected', async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse([
+        { id: '1', email_address: 'zeta@example.com', display_name: 'Zeta', open_action_item_count: 0, updated_at: '2026-07-20T10:00:00Z' },
+        { id: '2', email_address: 'alpha@example.com', display_name: 'Alpha', open_action_item_count: 0, updated_at: '2026-07-10T10:00:00Z' },
+      ])
+    )
+
+    render(<ContactsPage />)
+    await waitFor(() => expect(screen.getByText('Zeta')).toBeInTheDocument())
+
+    let links = screen.getAllByRole('link')
+    expect(links[0]).toHaveAccessibleName(/zeta/i)
+    expect(links[1]).toHaveAccessibleName(/alpha/i)
+
+    fireEvent.click(screen.getByRole('button', { name: /^name$/i }))
+
+    links = screen.getAllByRole('link')
+    expect(links[0]).toHaveAccessibleName(/alpha/i)
+    expect(links[1]).toHaveAccessibleName(/zeta/i)
   })
 
   it('debounces search input and ignores a stale out-of-order response', async () => {

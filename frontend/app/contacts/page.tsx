@@ -2,8 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Users } from 'lucide-react'
 
 import { apiFetch } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/formatRelativeTime'
+import { getInitials } from '@/lib/getInitials'
+import { Badge } from '@/app/components/ui/Badge'
+import { Button } from '@/app/components/ui/Button'
+import { Card } from '@/app/components/ui/Card'
+import { EmptyState } from '@/app/components/ui/EmptyState'
+import { Input } from '@/app/components/ui/Input'
 
 type Contact = {
   id: string
@@ -13,11 +21,26 @@ type Contact = {
   updated_at: string
 }
 
+type SortMode = 'recent' | 'name'
+
+function sortContacts(contacts: Contact[], mode: SortMode): Contact[] {
+  const copy = [...contacts]
+  if (mode === 'name') {
+    copy.sort((a, b) =>
+      (a.display_name ?? a.email_address ?? '').localeCompare(b.display_name ?? b.email_address ?? '')
+    )
+  } else {
+    copy.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+  }
+  return copy
+}
+
 export default function ContactsPage() {
   const router = useRouter()
   const [contacts, setContacts] = useState<Contact[] | null>(null)
   const [error, setError] = useState(false)
   const [search, setSearch] = useState('')
+  const [sortMode, setSortMode] = useState<SortMode>('recent')
   const requestId = useRef(0)
 
   useEffect(() => {
@@ -48,42 +71,71 @@ export default function ContactsPage() {
     return () => clearTimeout(timer)
   }, [search, router])
 
+  const sortedContacts = contacts ? sortContacts(contacts, sortMode) : null
+
   return (
     <div className="p-8">
-      <h1 className="text-xl font-semibold text-white">Contacts</h1>
+      <h1 className="text-xl font-bold text-[var(--color-fg)]">Contacts</h1>
 
-      <input
-        type="text"
-        placeholder="Search contacts…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mt-4 w-full max-w-sm rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-500 focus:border-emerald-500 focus:outline-none"
-      />
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Input value={search} onChange={setSearch} placeholder="Search contacts…" className="max-w-sm" />
+        <div className="flex gap-2">
+          <Button variant={sortMode === 'recent' ? 'primary' : 'secondary'} onClick={() => setSortMode('recent')}>
+            Recent
+          </Button>
+          <Button variant={sortMode === 'name' ? 'primary' : 'secondary'} onClick={() => setSortMode('name')}>
+            Name
+          </Button>
+        </div>
+      </div>
 
       {error && (
-        <p role="alert" className="mt-4 text-sm text-red-400">
+        <p role="alert" className="mt-4 text-sm text-[var(--color-danger)]">
           Something went wrong loading your contacts.
         </p>
       )}
 
-      {contacts === null ? (
-        error ? null : <p className="mt-4 text-sm text-neutral-400">Loading…</p>
-      ) : contacts.length === 0 ? (
-        <p className="mt-4 text-sm text-neutral-400">No contacts yet — sync and extract to get started.</p>
+      {sortedContacts === null ? (
+        error ? null : <p className="mt-4 text-sm text-[var(--color-muted)]">Loading…</p>
+      ) : sortedContacts.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="No contacts yet"
+          description="Sync and extract to get started."
+          className="mt-4"
+        />
       ) : (
-        <ul className="mt-4 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
-          {contacts.map((contact) => (
-            <li key={contact.id} className="flex items-center justify-between px-4 py-3 text-sm">
-              <a href={`/contacts/view?id=${contact.id}`} className="text-emerald-400 hover:underline">
-                {contact.display_name ?? contact.email_address}
+        <div className="mt-4 space-y-3">
+          {sortedContacts.map((contact) => (
+            <Card key={contact.id} hoverable className="flex items-center justify-between gap-4">
+              <a
+                href={`/contacts/view?id=${contact.id}`}
+                aria-label={contact.display_name ?? contact.email_address ?? undefined}
+                className="flex min-w-0 flex-1 items-center gap-4"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] text-sm font-semibold text-[var(--color-accent)]">
+                  {getInitials(contact.display_name, contact.email_address)}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-[var(--color-fg)]">
+                    {contact.display_name ?? contact.email_address}
+                  </span>
+                  {contact.email_address && (
+                    <span className="block truncate text-xs text-[var(--color-muted)]">{contact.email_address}</span>
+                  )}
+                </span>
               </a>
-              <span className="text-neutral-400">
-                {contact.open_action_item_count} open action item
-                {contact.open_action_item_count === 1 ? '' : 's'}
-              </span>
-            </li>
+              <div className="flex shrink-0 items-center gap-3">
+                <Badge variant={contact.open_action_item_count > 0 ? 'accent' : 'muted'}>
+                  {contact.open_action_item_count} open
+                </Badge>
+                <span className="text-xs text-[var(--color-muted)]">
+                  {formatRelativeTime(contact.updated_at, new Date())}
+                </span>
+              </div>
+            </Card>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   )

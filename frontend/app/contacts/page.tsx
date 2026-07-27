@@ -78,7 +78,13 @@ export default function ContactsPage() {
       <h1 className="text-xl font-bold text-[var(--color-fg)]">Contacts</h1>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Input value={search} onChange={setSearch} placeholder="Search contacts…" className="max-w-sm" />
+        <Input
+          value={search}
+          onChange={setSearch}
+          placeholder="Search contacts…"
+          aria-label="Search contacts"
+          className="max-w-sm"
+        />
         <div className="flex gap-2">
           <Button variant={sortMode === 'recent' ? 'primary' : 'secondary'} onClick={() => setSortMode('recent')}>
             Recent

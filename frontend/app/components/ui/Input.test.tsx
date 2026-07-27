@@ -15,4 +15,9 @@ describe('Input', () => {
     fireEvent.change(screen.getByPlaceholderText('Search…'), { target: { value: 'abc' } })
     expect(onChange).toHaveBeenCalledWith('abc')
   })
+
+  it('applies an aria-label when provided', () => {
+    render(<Input value="" onChange={vi.fn()} aria-label="Search" />)
+    expect(screen.getByRole('textbox', { name: 'Search' })).toBeInTheDocument()
+  })
 })

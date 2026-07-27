@@ -1,23 +1,40 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { motion } from 'framer-motion'
+import { ChevronsLeft, ChevronsRight, LayoutDashboard, ListTodo, LogOut, Search, Users } from 'lucide-react'
 
 import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/app/components/ui/Button'
 
 const NAV_LINKS = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/contacts', label: 'Contacts' },
-  { href: '/planner', label: 'Planner' },
-  { href: '/search', label: 'Search' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/contacts', label: 'Contacts', icon: Users },
+  { href: '/planner', label: 'Planner', icon: ListTodo },
+  { href: '/search', label: 'Search', icon: Search },
 ]
 
 const CHROME_HIDDEN_PATHS = new Set(['/', '/login', '/callback'])
+const COLLAPSE_STORAGE_KEY = 'nav-collapsed'
 
 export default function NavBar() {
   const pathname = usePathname()
   const router = useRouter()
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(COLLAPSE_STORAGE_KEY)
+    if (stored === 'true') setCollapsed(true)
+  }, [])
 
   if (CHROME_HIDDEN_PATHS.has(pathname)) return null
+
+  function toggleCollapsed() {
+    const next = !collapsed
+    setCollapsed(next)
+    window.localStorage.setItem(COLLAPSE_STORAGE_KEY, String(next))
+  }
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -26,25 +43,55 @@ export default function NavBar() {
   }
 
   return (
-    <nav className="flex w-56 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950 px-3 py-6">
-      <div className="mb-8 px-3 text-sm font-semibold tracking-wide text-white">
-        AI Relationship Manager
+    <motion.nav
+      animate={{ width: collapsed ? 72 : 224 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-bg-alt)] px-3 py-6"
+    >
+      <div className="mb-8 flex items-center justify-between px-1">
+        {!collapsed && (
+          <span className="truncate text-sm font-semibold tracking-wide text-[var(--color-fg)]">
+            AI Relationship Manager
+          </span>
+        )}
+        <Button
+          variant="ghost"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={toggleCollapsed}
+        >
+          {collapsed ? <ChevronsRight size={16} aria-hidden="true" /> : <ChevronsLeft size={16} aria-hidden="true" />}
+        </Button>
       </div>
 
       <div className="flex flex-1 flex-col gap-1">
         {NAV_LINKS.map((link) => {
           const active = pathname === link.href || pathname.startsWith(`${link.href}/`)
+          const Icon = link.icon
           return (
             <a
               key={link.href}
               href={link.href}
-              className={`rounded-md px-3 py-2 text-sm transition ${
-                active
-                  ? 'bg-neutral-800 text-white'
-                  : 'text-neutral-400 hover:bg-neutral-900 hover:text-white'
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex items-center gap-3 rounded-[var(--radius-card)] px-3 py-2 text-sm transition ${
+                active ? 'text-[var(--color-fg)]' : 'text-[var(--color-muted)] hover:text-[var(--color-fg)]'
               }`}
             >
-              {link.label}
+              {active && (
+                <motion.span
+                  layoutId="nav-active-bg"
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="absolute inset-0 rounded-[var(--radius-card)] bg-[var(--color-accent)]/10"
+                />
+              )}
+              {active && (
+                <motion.span
+                  layoutId="nav-active-bar"
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-[var(--color-accent)]"
+                />
+              )}
+              <Icon size={18} className="relative shrink-0" aria-hidden="true" />
+              {!collapsed && <span className="relative truncate">{link.label}</span>}
             </a>
           )
         })}
@@ -52,10 +99,12 @@ export default function NavBar() {
 
       <button
         onClick={handleSignOut}
-        className="mt-6 rounded-md px-3 py-2 text-left text-sm text-neutral-400 transition hover:bg-neutral-900 hover:text-white"
+        aria-label="Sign out"
+        className="mt-6 flex items-center gap-3 rounded-[var(--radius-card)] px-3 py-2 text-left text-sm text-[var(--color-muted)] transition hover:text-[var(--color-fg)]"
       >
-        Sign out
+        <LogOut size={18} aria-hidden="true" />
+        {!collapsed && <span>Sign out</span>}
       </button>
-    </nav>
+    </motion.nav>
   )
 }

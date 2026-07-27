@@ -4,7 +4,9 @@ import { Suspense, useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import { apiFetch } from '@/lib/api'
+import { getInitials } from '@/lib/getInitials'
 import ScheduleActionItemPanel from '@/app/components/ScheduleActionItemPanel'
+import { Card } from '@/app/components/ui/Card'
 
 type ContactDetail = {
   id: string
@@ -36,7 +38,7 @@ type State =
 
 export default function ContactProfilePage() {
   return (
-    <Suspense fallback={<p>Loading…</p>}>
+    <Suspense fallback={<p className="p-8 text-[var(--color-muted)]">Loading…</p>}>
       <ContactProfileContent />
     </Suspense>
   )
@@ -90,21 +92,21 @@ function ContactProfileContent() {
   if (state.state === 'loading') {
     return (
       <div className="p-8">
-        <p className="text-neutral-400">Loading…</p>
+        <p className="text-[var(--color-muted)]">Loading…</p>
       </div>
     )
   }
   if (state.state === 'not_found') {
     return (
       <div className="p-8">
-        <p className="text-neutral-400">Contact not found.</p>
+        <p className="text-[var(--color-muted)]">Contact not found.</p>
       </div>
     )
   }
   if (state.state === 'error') {
     return (
       <div className="p-8">
-        <p role="alert" className="text-red-400">Something went wrong loading this contact.</p>
+        <p role="alert" className="text-[var(--color-danger)]">Something went wrong loading this contact.</p>
       </div>
     )
   }
@@ -115,20 +117,35 @@ function ContactProfileContent() {
 
   return (
     <div className="p-8">
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <h1 className="text-xl font-semibold text-white">{contact.display_name ?? contact.email_address}</h1>
-        {contact.email_address && <p className="mt-1 text-sm text-neutral-400">{contact.email_address}</p>}
-        <p className="mt-4 text-sm text-neutral-300">{contact.notes ?? 'No notes yet.'}</p>
-      </div>
+      <Card className="flex items-center gap-4">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)]/10 text-lg font-semibold text-[var(--color-accent)]">
+          {getInitials(contact.display_name, contact.email_address)}
+        </span>
+        <div>
+          <h1 className="text-xl font-bold text-[var(--color-fg)]">
+            {contact.display_name ?? contact.email_address}
+          </h1>
+          {contact.email_address && <p className="text-sm text-[var(--color-muted)]">{contact.email_address}</p>}
+          <p className="mt-1 text-xs text-[var(--color-muted)]">
+            Member since{' '}
+            {new Date(contact.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+      </Card>
 
-      <h2 className="mt-6 text-sm font-semibold text-white">Open</h2>
+      <Card className="mt-4">
+        <h2 className="text-sm font-semibold text-[var(--color-fg)]">AI summary</h2>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">{contact.notes ?? 'No notes yet.'}</p>
+      </Card>
+
+      <h2 className="mt-6 text-sm font-semibold text-[var(--color-fg)]">Open</h2>
       {openItems.length === 0 ? (
-        <p className="mt-2 text-sm text-neutral-400">Nothing open.</p>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">Nothing open.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
+        <div className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
           {openItems.map((item) => (
-            <li key={item.id} className="px-4 py-3 text-sm text-neutral-200">
-              {item.text}
+            <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-[var(--color-fg)]">
+              <span>{item.text}</span>
               <ScheduleActionItemPanel
                 itemId={item.id}
                 scheduledCalendarEventId={item.scheduled_calendar_event_id}
@@ -136,20 +153,22 @@ function ContactProfileContent() {
                 contact={contact}
                 onScheduled={load}
               />
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
 
-      <h2 className="mt-6 text-sm font-semibold text-white">Done</h2>
+      <h2 className="mt-6 text-sm font-semibold text-[var(--color-fg)]">Done</h2>
       {doneItems.length === 0 ? (
-        <p className="mt-2 text-sm text-neutral-400">Nothing done yet.</p>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">Nothing done yet.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-neutral-800 rounded-lg border border-neutral-800 bg-neutral-900">
+        <div className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
           {doneItems.map((item) => (
-            <li key={item.id} className="px-4 py-3 text-sm text-neutral-400 line-through">{item.text}</li>
+            <p key={item.id} className="px-4 py-3 text-sm text-[var(--color-muted)] line-through">
+              {item.text}
+            </p>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   )

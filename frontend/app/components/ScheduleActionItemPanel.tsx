@@ -89,7 +89,7 @@ export default function ScheduleActionItemPanel({
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="absolute left-0 top-full z-10 mt-2 w-72 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-lg"
+          className="absolute right-0 top-full z-10 mt-2 w-72 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-lg"
         >
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-[var(--color-fg)]">Pick a time</span>

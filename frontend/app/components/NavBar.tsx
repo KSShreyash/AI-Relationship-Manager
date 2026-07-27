@@ -22,12 +22,10 @@ const COLLAPSE_STORAGE_KEY = 'nav-collapsed'
 export default function NavBar() {
   const pathname = usePathname()
   const router = useRouter()
-  const [collapsed, setCollapsed] = useState(false)
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(COLLAPSE_STORAGE_KEY)
-    if (stored === 'true') setCollapsed(true)
-  }, [])
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true'
+  })
 
   const [email, setEmail] = useState<string | null>(null)
 

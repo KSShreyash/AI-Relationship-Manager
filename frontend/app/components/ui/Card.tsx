@@ -17,9 +17,7 @@ export function Card({ children, className, hoverable = false }: CardProps) {
         className
       )}
     >
-      <div>
-        {children}
-      </div>
+      {children}
     </div>
   )
 }

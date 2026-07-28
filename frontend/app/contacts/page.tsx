@@ -9,7 +9,6 @@ import { formatRelativeTime } from '@/lib/formatRelativeTime'
 import { getInitials } from '@/lib/getInitials'
 import { Badge } from '@/app/components/ui/Badge'
 import { Button } from '@/app/components/ui/Button'
-import { Card } from '@/app/components/ui/Card'
 import { EmptyState } from '@/app/components/ui/EmptyState'
 import { Input } from '@/app/components/ui/Input'
 
@@ -111,36 +110,55 @@ export default function ContactsPage() {
           className="mt-4"
         />
       ) : (
-        <div className="mt-4 space-y-3">
-          {sortedContacts.map((contact) => (
-            <Card key={contact.id} hoverable className="flex items-center justify-between gap-4">
-              <a
-                href={`/contacts/view?id=${contact.id}`}
-                aria-label={contact.display_name ?? contact.email_address ?? undefined}
-                className="flex min-w-0 flex-1 items-center gap-4"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] text-sm font-semibold text-[var(--color-accent)]">
-                  {getInitials(contact.display_name, contact.email_address)}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-[var(--color-fg)]">
-                    {contact.display_name ?? contact.email_address}
-                  </span>
-                  {contact.email_address && (
-                    <span className="block truncate text-xs text-[var(--color-muted)]">{contact.email_address}</span>
-                  )}
-                </span>
-              </a>
-              <div className="flex shrink-0 items-center gap-3">
-                <Badge variant={contact.open_action_item_count > 0 ? 'accent' : 'muted'}>
-                  {contact.open_action_item_count} open
-                </Badge>
-                <span className="text-xs text-[var(--color-muted)]">
-                  {formatRelativeTime(contact.updated_at, new Date())}
-                </span>
-              </div>
-            </Card>
-          ))}
+        <div className="mt-4 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-border)]">
+          <table className="w-full text-left">
+            <thead className="bg-[var(--color-bg-alt)]">
+              <tr>
+                <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                  Contact
+                </th>
+                <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                  Open Items
+                </th>
+                <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+                  Last Interaction
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border)]">
+              {sortedContacts.map((contact) => (
+                <tr key={contact.id} className="bg-[var(--color-surface)] transition hover:bg-[var(--color-bg-alt)]">
+                  <td className="px-4 py-3">
+                    <a
+                      href={`/contacts/view?id=${contact.id}`}
+                      aria-label={contact.display_name ?? contact.email_address ?? undefined}
+                      className="flex items-center gap-3"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-bg-alt)] text-xs font-semibold text-[var(--color-accent)]">
+                        {getInitials(contact.display_name, contact.email_address)}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-[var(--color-fg)]">
+                          {contact.display_name ?? contact.email_address}
+                        </span>
+                        {contact.email_address && (
+                          <span className="block truncate text-xs text-[var(--color-muted)]">{contact.email_address}</span>
+                        )}
+                      </span>
+                    </a>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge variant={contact.open_action_item_count > 0 ? 'accent' : 'muted'}>
+                      {contact.open_action_item_count} open
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-[var(--color-muted)]">
+                    {formatRelativeTime(contact.updated_at, new Date())}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

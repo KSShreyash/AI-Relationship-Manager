@@ -59,6 +59,21 @@ describe('ContactsPage', () => {
     expect(screen.getByRole('link', { name: /alice/i })).toHaveAttribute('href', '/contacts/view?id=1')
   })
 
+  it('renders contacts as a data table with Contact, Open Items, and Last Interaction columns', async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse([
+        { id: '1', email_address: 'alice@example.com', display_name: 'Alice', open_action_item_count: 2, updated_at: '2026-07-17T10:00:00Z' },
+      ])
+    )
+
+    render(<ContactsPage />)
+
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+    expect(screen.getByRole('columnheader', { name: 'Contact' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Open Items' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Last Interaction' })).toBeInTheDocument()
+  })
+
   it('shows an empty state when there are no contacts', async () => {
     apiFetchMock.mockResolvedValue(jsonResponse([]))
 

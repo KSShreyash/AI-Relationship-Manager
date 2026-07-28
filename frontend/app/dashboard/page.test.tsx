@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -26,9 +26,9 @@ const DASHBOARD_BODY = {
 }
 
 const ACTION_ITEMS_BODY = [
-  { id: 'i1', status: 'open' },
-  { id: 'i2', status: 'open' },
-  { id: 'i3', status: 'done' },
+  { id: 'i1', status: 'open', text: 'Send the proposal', due_date: '2026-07-20', contact: null },
+  { id: 'i2', status: 'open', text: 'Confirm the migration', due_date: '2026-07-18', contact: null },
+  { id: 'i3', status: 'done', text: 'Already done', due_date: '2026-07-01', contact: null },
 ]
 
 describe('DashboardPage', () => {
@@ -183,6 +183,28 @@ describe('DashboardPage', () => {
     render(<DashboardPage />)
 
     await waitFor(() => expect(screen.getByText('2 open of 3 total')).toBeInTheDocument())
+  })
+
+  it('shows an upcoming-tasks preview sorted by nearest due date', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/me/graph-status') {
+        return Promise.resolve(jsonResponse({ graph_me: { mail: 'user@example.com' } }))
+      }
+      if (path === '/api/dashboard') {
+        return Promise.resolve(jsonResponse(DASHBOARD_BODY))
+      }
+      if (path === '/api/action-items?include_done=true') {
+        return Promise.resolve(jsonResponse(ACTION_ITEMS_BODY))
+      }
+      throw new Error(`Unexpected path: ${path}`)
+    })
+
+    render(<DashboardPage />)
+
+    await waitFor(() => expect(screen.getByText('Upcoming tasks')).toBeInTheDocument())
+    const list = screen.getByText('Upcoming tasks').closest('div') as HTMLElement
+    const items = within(list).getAllByText(/Send the proposal|Confirm the migration|Already done/)
+    expect(items.map((el) => el.textContent)).toEqual(['Confirm the migration', 'Send the proposal'])
   })
 
   it('leaves the gauge section blank when the action-items fetch fails', async () => {

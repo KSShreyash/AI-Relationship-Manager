@@ -7,7 +7,7 @@ import { ListChecks, ListPlus, UserRound, Users } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { Button } from '@/app/components/ui/Button'
 import { Card } from '@/app/components/ui/Card'
-import { TasksRemainingGauge } from '@/app/components/TasksRemainingGauge'
+import { TasksRemainingBar } from '@/app/components/TasksRemainingBar'
 
 type GraphStatus =
   | { state: 'loading' }
@@ -23,6 +23,14 @@ type DashboardData = {
   contact_count: number
   open_action_item_count: number
   activity: ActivityEntry[]
+}
+
+type ActionItemSummary = {
+  id: string
+  text: string
+  status: 'open' | 'done'
+  due_date: string | null
+  contact: { id: string; display_name: string | null; email_address: string | null } | null
 }
 
 export default function DashboardPage() {
@@ -72,16 +80,22 @@ export default function DashboardPage() {
   }, [])
 
   const [taskTotals, setTaskTotals] = useState<{ open: number; total: number } | null>(null)
+  const [upcomingTasks, setUpcomingTasks] = useState<ActionItemSummary[] | null>(null)
 
   const loadTaskTotals = useCallback(async () => {
     try {
       const response = await apiFetch('/api/action-items?include_done=true')
       if (!response.ok) return
-      const items: { status: 'open' | 'done' }[] = await response.json()
+      const items: ActionItemSummary[] = await response.json()
       const open = items.filter((item) => item.status === 'open').length
       setTaskTotals({ open, total: items.length })
+      const upcoming = items
+        .filter((item): item is ActionItemSummary & { due_date: string } => item.status === 'open' && item.due_date !== null)
+        .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+        .slice(0, 5)
+      setUpcomingTasks(upcoming)
     } catch {
-      // Non-fatal: leaves the gauge section blank, same treatment as loadDashboard's fetch failure.
+      // Non-fatal: leaves the gauge and upcoming-tasks sections blank, same treatment as loadDashboard's fetch failure.
     }
   }, [])
 
@@ -179,39 +193,64 @@ export default function DashboardPage() {
 
           {taskTotals && (
             <Card className="mt-6 flex items-center justify-center p-8">
-              <TasksRemainingGauge open={taskTotals.open} total={taskTotals.total} />
+              <TasksRemainingBar open={taskTotals.open} total={taskTotals.total} />
             </Card>
           )}
 
-          <Card className="mt-6">
-            <h2 className="text-sm font-semibold text-[var(--color-fg)]">Recent activity</h2>
-            {dashboard.activity.length === 0 ? (
-              <p className="mt-2 text-sm text-[var(--color-muted)]">No recent activity.</p>
-            ) : (
-              <ul className="mt-4 space-y-4">
-                {dashboard.activity.map((entry) => {
-                  const Icon = entry.type === 'contact_updated' ? UserRound : ListPlus
-                  return (
-                    <li key={`${entry.type}-${entry.id}`} className="flex gap-3 text-sm">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-accent)]">
-                        <Icon size={16} aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-[var(--color-fg)]">
-                          {entry.type === 'contact_updated'
-                            ? `Updated contact: ${entry.display_name ?? entry.email_address}`
-                            : `New action item (${entry.direction}): ${entry.text}`}
-                        </p>
-                        <p className="mt-0.5 text-xs text-[var(--color-muted)]">
-                          {new Date(entry.timestamp).toLocaleString()}
-                        </p>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
+          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card>
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]">Recent activity</h2>
+              {dashboard.activity.length === 0 ? (
+                <p className="mt-2 text-sm text-[var(--color-muted)]">No recent activity.</p>
+              ) : (
+                <ul className="mt-4 space-y-4">
+                  {dashboard.activity.map((entry) => {
+                    const Icon = entry.type === 'contact_updated' ? UserRound : ListPlus
+                    return (
+                      <li key={`${entry.type}-${entry.id}`} className="flex gap-3 text-sm">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-accent)]">
+                          <Icon size={16} aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[var(--color-fg)]">
+                            {entry.type === 'contact_updated'
+                              ? `Updated contact: ${entry.display_name ?? entry.email_address}`
+                              : `New action item (${entry.direction}): ${entry.text}`}
+                          </p>
+                          <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+                            {new Date(entry.timestamp).toLocaleString()}
+                          </p>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </Card>
+
+            {upcomingTasks && (
+              <Card>
+                <h2 className="text-sm font-semibold text-[var(--color-fg)]">Upcoming tasks</h2>
+                {upcomingTasks.length === 0 ? (
+                  <p className="mt-2 text-sm text-[var(--color-muted)]">No upcoming tasks.</p>
+                ) : (
+                  <ul className="mt-4 space-y-4">
+                    {upcomingTasks.map((item) => (
+                      <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                        <p className="min-w-0 truncate text-[var(--color-fg)]">{item.text}</p>
+                        <span className="shrink-0 text-xs text-[var(--color-muted)]">
+                          {new Date(item.due_date + 'T00:00:00Z').toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
             )}
-          </Card>
+          </div>
         </>
       )}
     </div>

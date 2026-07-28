@@ -89,28 +89,28 @@ export default function ScheduleActionItemPanel({
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="absolute right-0 top-full z-10 mt-2 w-72 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-lg"
+          className="absolute right-0 top-full z-10 mt-2 w-80 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl"
         >
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-[var(--color-fg)]">Pick a time</span>
+            <span className="text-base font-semibold text-[var(--color-fg)]">Schedule meeting</span>
             <button
               onClick={closePanel}
               aria-label="Close"
-              className="text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+              className="text-[var(--color-muted)] transition hover:text-[var(--color-fg)]"
             >
               <X size={16} aria-hidden="true" />
             </button>
           </div>
 
-          {error && <p role="alert" className="mt-2 text-sm text-[var(--color-danger)]">{error}</p>}
+          {error && <p role="alert" className="mt-3 text-sm text-[var(--color-danger)]">{error}</p>}
 
           {slots === null ? (
-            <p className="mt-3 text-sm text-[var(--color-muted)]">Loading suggestions…</p>
+            <p className="mt-4 text-sm text-[var(--color-muted)]">Loading suggestions…</p>
           ) : slots.length === 0 ? (
-            <p className="mt-3 text-sm text-[var(--color-muted)]">No open slots found.</p>
+            <p className="mt-4 text-sm text-[var(--color-muted)]">No open slots found.</p>
           ) : (
             <>
-              <label className="mt-3 flex items-center justify-between text-sm text-[var(--color-fg)]">
+              <label className="mt-4 flex items-center justify-between text-sm text-[var(--color-fg)]">
                 Online meeting
                 <span className="relative inline-flex h-5 w-9 shrink-0">
                   <input
@@ -125,13 +125,13 @@ export default function ScheduleActionItemPanel({
                 </span>
               </label>
 
-              <div className={`mt-3 grid grid-cols-2 gap-2 ${submitting ? 'opacity-50' : ''}`}>
+              <div className={`mt-4 grid grid-cols-2 gap-2.5 ${submitting ? 'opacity-50' : ''}`}>
                 {slots.map((slot) => (
                   <button
                     key={slot.start}
                     onClick={() => confirm(slot)}
                     disabled={submitting}
-                    className="rounded-[var(--radius-card)] border border-[var(--color-border)] px-2 py-2 text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 disabled:pointer-events-none"
+                    className="rounded-[var(--radius-card)] border border-[var(--color-border)] px-3 py-2.5 text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 disabled:pointer-events-none"
                   >
                     {new Date(slot.start).toLocaleString()}
                   </button>

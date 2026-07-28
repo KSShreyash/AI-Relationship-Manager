@@ -19,6 +19,7 @@ describe('SearchPage', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
     pushMock.mockReset()
+    window.localStorage.clear()
   })
 
   it('shows an inline error instead of failing silently when the fetch throws', async () => {
@@ -210,6 +211,58 @@ describe('SearchPage', () => {
 
     expect(screen.getByText(/type to search/i)).toBeInTheDocument()
     expect(screen.queryByText('Stale Alice')).not.toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('filters results by tab: People hides Action Items, Tasks hides Contacts', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        contacts: [{ id: 'c1', display_name: 'Alice Johnson', email_address: 'alice@example.com', notes: null }],
+        action_items: [
+          { id: 'a1', text: 'Follow up with Alice', direction: 'mine', status: 'open', due_date: null, contact: null },
+        ],
+      })
+    )
+
+    render(<SearchPage />)
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'alice' } })
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.waitFor(() => expect(screen.getByRole('heading', { name: /^contacts$/i })).toBeInTheDocument())
+    expect(screen.getByRole('heading', { name: /^action items$/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^people$/i }))
+    expect(screen.getByRole('heading', { name: /^contacts$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^action items$/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^tasks$/i }))
+    expect(screen.queryByRole('heading', { name: /^contacts$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /^action items$/i })).toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('remembers a successful search, lets you rerun it from the recent list, and clears the list', async () => {
+    vi.useFakeTimers()
+    apiFetchMock.mockResolvedValue(jsonResponse({ contacts: [], action_items: [] }))
+
+    render(<SearchPage />)
+    const input = screen.getByPlaceholderText(/search/i)
+    fireEvent.change(input, { target: { value: 'alice' } })
+    await vi.advanceTimersByTimeAsync(300)
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'alice' })).toBeInTheDocument())
+
+    fireEvent.change(input, { target: { value: '' } })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(screen.getByRole('button', { name: 'alice' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'alice' }))
+    await vi.advanceTimersByTimeAsync(300)
+    expect(apiFetchMock).toHaveBeenLastCalledWith('/api/search?q=alice')
+
+    fireEvent.click(screen.getByRole('button', { name: /clear all/i }))
+    expect(screen.queryByRole('button', { name: 'alice' })).not.toBeInTheDocument()
 
     vi.useRealTimers()
   })

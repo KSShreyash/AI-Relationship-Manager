@@ -245,7 +245,10 @@ describe('SearchPage', () => {
 
   it('remembers a successful search, lets you rerun it from the recent list, and clears the list', async () => {
     vi.useFakeTimers()
-    apiFetchMock.mockResolvedValue(jsonResponse({ contacts: [], action_items: [] }))
+    // A fresh Response per call: reusing a single Response instance across the
+    // two searches below would throw on the second `.json()` (body already read),
+    // which would mask whether dedup is actually exercised.
+    apiFetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ contacts: [], action_items: [] })))
 
     render(<SearchPage />)
     const input = screen.getByPlaceholderText(/search/i)
@@ -260,9 +263,33 @@ describe('SearchPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'alice' }))
     await vi.advanceTimersByTimeAsync(300)
     expect(apiFetchMock).toHaveBeenLastCalledWith('/api/search?q=alice')
+    // Re-searching an existing term must not create a duplicate pill.
+    expect(screen.getAllByRole('button', { name: 'alice' })).toHaveLength(1)
 
     fireEvent.click(screen.getByRole('button', { name: /clear all/i }))
     expect(screen.queryByRole('button', { name: 'alice' })).not.toBeInTheDocument()
+
+    vi.useRealTimers()
+  })
+
+  it('caps recent searches at 5, dropping the oldest', async () => {
+    vi.useFakeTimers()
+    // A fresh Response per call: reusing a single Response instance across
+    // multiple fetches would throw on the second `.json()` (body already read).
+    apiFetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ contacts: [], action_items: [] })))
+
+    render(<SearchPage />)
+    const input = screen.getByPlaceholderText(/search/i)
+
+    for (const term of ['one', 'two', 'three', 'four', 'five', 'six']) {
+      fireEvent.change(input, { target: { value: term } })
+      await vi.advanceTimersByTimeAsync(300)
+      await vi.waitFor(() => expect(screen.getByRole('button', { name: term })).toBeInTheDocument())
+    }
+
+    expect(screen.queryByRole('button', { name: 'one' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'two' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'six' })).toBeInTheDocument()
 
     vi.useRealTimers()
   })

@@ -42,7 +42,12 @@ function loadRecentSearches(): string[] {
   if (typeof window === 'undefined') return []
   try {
     const stored = window.localStorage.getItem(RECENT_SEARCHES_KEY)
-    return stored ? JSON.parse(stored) : []
+    if (!stored) return []
+    const parsed = JSON.parse(stored)
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+      return parsed
+    }
+    return []
   } catch {
     return []
   }

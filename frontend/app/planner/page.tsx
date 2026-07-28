@@ -185,7 +185,7 @@ export default function PlannerPage() {
                 {tab.label}
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-xs ${
-                    active ? 'bg-black/15' : 'bg-[var(--color-surface)] text-[var(--color-muted)]'
+                    active ? 'bg-[var(--color-bg)]/20' : 'bg-[var(--color-surface)] text-[var(--color-muted)]'
                   }`}
                 >
                   {buckets[tab.key].length}

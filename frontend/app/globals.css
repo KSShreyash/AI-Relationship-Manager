@@ -4,14 +4,14 @@
   --background: #0a0a0a;
   --foreground: #ededed;
 
-  --color-bg: #111315;
-  --color-bg-alt: #16181D;
-  --color-surface: #1C2027;
-  --color-border: #2A2F38;
-  --color-accent: #8CF01F;
-  --color-accent-fg: #0A0A0A;
-  --color-muted: #9AA3AE;
-  --color-fg: #F5F6F7;
+  --color-bg: #0A0A0F;
+  --color-bg-alt: #101015;
+  --color-surface: #16161D;
+  --color-border: #26262F;
+  --color-accent: #6D5DFB;
+  --color-accent-fg: #FFFFFF;
+  --color-muted: #9497A6;
+  --color-fg: #F5F5F7;
   --radius-card: 18px;
   --color-danger: #F87171;
   --color-danger-border: #4A2326;

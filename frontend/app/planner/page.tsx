@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api'
 import { getInitials } from '@/lib/getInitials'
 import ScheduleActionItemPanel from '@/app/components/ScheduleActionItemPanel'
 import { Badge, type BadgeVariant } from '@/app/components/ui/Badge'
+import { Checkbox } from '@/app/components/ui/Checkbox'
 
 type ActionItem = {
   id: string
@@ -22,6 +23,17 @@ type ActionItem = {
 }
 
 type Direction = 'all' | 'mine' | 'theirs'
+type TabKey = 'overdue' | 'today' | 'tomorrow' | 'thisWeek' | 'nextWeek' | 'noDate' | 'completed'
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'today', label: 'Today' },
+  { key: 'tomorrow', label: 'Tomorrow' },
+  { key: 'thisWeek', label: 'This week' },
+  { key: 'nextWeek', label: 'Next week' },
+  { key: 'noDate', label: 'No date' },
+  { key: 'completed', label: 'Completed' },
+]
 
 function daysFromNow(dateStr: string): number {
   const due = new Date(dateStr + 'T00:00:00Z')
@@ -30,20 +42,35 @@ function daysFromNow(dateStr: string): number {
   return Math.round((due.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24))
 }
 
+function bucketOf(item: ActionItem): TabKey {
+  if (item.status === 'done') return 'completed'
+  if (!item.due_date) return 'noDate'
+  const days = daysFromNow(item.due_date)
+  if (days < 0) return 'overdue'
+  if (days === 0) return 'today'
+  if (days === 1) return 'tomorrow'
+  if (days <= 7) return 'thisWeek'
+  return 'nextWeek'
+}
+
+function badgeVariantForBucket(bucket: TabKey): BadgeVariant {
+  if (bucket === 'overdue') return 'danger'
+  if (bucket === 'today' || bucket === 'tomorrow' || bucket === 'thisWeek') return 'accent'
+  return 'muted'
+}
+
 export default function PlannerPage() {
   const router = useRouter()
   const [items, setItems] = useState<ActionItem[]>([])
   const [direction, setDirection] = useState<Direction>('all')
-  const [includeDone, setIncludeDone] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabKey>('today')
   const [toggleError, setToggleError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({ include_done: 'true' })
       if (direction !== 'all') params.set('direction', direction)
-      if (includeDone) params.set('include_done', 'true')
-      const query = params.toString()
-      const response = await apiFetch(`/api/action-items${query ? `?${query}` : ''}`)
+      const response = await apiFetch(`/api/action-items?${params.toString()}`)
       if (response.status === 401) {
         router.push('/login')
         return
@@ -56,7 +83,7 @@ export default function PlannerPage() {
     } catch {
       setToggleError('Something went wrong loading your action items. Please try again.')
     }
-  }, [direction, includeDone, router])
+  }, [direction, router])
 
   useEffect(() => {
     load()
@@ -77,25 +104,28 @@ export default function PlannerPage() {
     await load()
   }
 
-  const openItems = items.filter((item) => item.status === 'open')
-  const doneItems = items.filter((item) => item.status === 'done')
+  const buckets: Record<TabKey, ActionItem[]> = {
+    overdue: [],
+    today: [],
+    tomorrow: [],
+    thisWeek: [],
+    nextWeek: [],
+    noDate: [],
+    completed: [],
+  }
+  for (const item of items) {
+    buckets[bucketOf(item)].push(item)
+  }
 
-  const overdue = openItems.filter((item) => item.due_date && daysFromNow(item.due_date) < 0)
-  const dueThisWeek = openItems.filter((item) => item.due_date && daysFromNow(item.due_date) >= 0 && daysFromNow(item.due_date) <= 7)
-  const later = openItems.filter((item) => item.due_date && daysFromNow(item.due_date) > 7)
-  const noDueDate = openItems.filter((item) => !item.due_date)
-
-  function renderItem(item: ActionItem, badgeVariant: BadgeVariant) {
+  function renderItem(item: ActionItem) {
     const isDone = item.status === 'done'
+    const badgeVariant = badgeVariantForBucket(bucketOf(item))
     return (
       <div key={item.id} className="flex items-center gap-3 px-4 py-3">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={isDone}
           onChange={() => toggleDone(item)}
           aria-label={isDone ? 'Reopen' : 'Mark done'}
-          style={{ accentColor: 'var(--color-accent)' }}
-          className="h-4 w-4 shrink-0 cursor-pointer rounded"
         />
         <div className="min-w-0 flex-1">
           <p className={`text-sm ${isDone ? 'text-[var(--color-muted)] line-through' : 'text-[var(--color-fg)]'}`}>
@@ -130,26 +160,41 @@ export default function PlannerPage() {
     )
   }
 
-  function renderGroup(title: string, groupItems: ActionItem[], borderColorVar: string, badgeVariant: BadgeVariant) {
-    if (groupItems.length === 0) return null
-    return (
-      <div className="mt-6">
-        <h2 className="text-sm font-semibold text-[var(--color-fg)]">{title}</h2>
-        <div
-          className="mt-2 divide-y divide-[var(--color-border)] rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] border-l-4"
-          style={{ borderLeftColor: borderColorVar }}
-        >
-          {groupItems.map((item) => renderItem(item, badgeVariant))}
-        </div>
-      </div>
-    )
-  }
+  const activeItems = buckets[activeTab]
 
   return (
     <div className="p-8">
       <h1 className="text-xl font-bold text-[var(--color-fg)]">Planner</h1>
 
-      <div className="mt-4 flex items-center gap-4">
+      <div className="mt-4 flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap gap-2">
+          {TABS.map((tab) => {
+            const active = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                aria-pressed={active}
+                className={`flex items-center gap-2 rounded-[var(--radius-card)] px-3 py-1.5 text-sm font-medium transition ${
+                  active
+                    ? 'bg-[var(--color-accent)] text-[var(--color-accent-fg)]'
+                    : 'border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-fg)]'
+                }`}
+              >
+                {tab.label}
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-xs ${
+                    active ? 'bg-black/15' : 'bg-[var(--color-surface)] text-[var(--color-muted)]'
+                  }`}
+                >
+                  {buckets[tab.key].length}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
         <select
           value={direction}
           onChange={(e) => setDirection(e.target.value as Direction)}
@@ -159,15 +204,6 @@ export default function PlannerPage() {
           <option value="mine">Mine</option>
           <option value="theirs">Theirs</option>
         </select>
-        <label className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
-          <input
-            type="checkbox"
-            checked={includeDone}
-            onChange={(e) => setIncludeDone(e.target.checked)}
-            style={{ accentColor: 'var(--color-accent)' }}
-          />
-          Show completed
-        </label>
       </div>
 
       {toggleError && <p role="alert" className="mt-3 text-sm text-[var(--color-danger)]">{toggleError}</p>}
@@ -175,13 +211,13 @@ export default function PlannerPage() {
       {items.length === 0 ? (
         <p className="mt-4 text-sm text-[var(--color-muted)]">Nothing due.</p>
       ) : (
-        <>
-          {renderGroup('Overdue', overdue, 'var(--color-danger)', 'danger')}
-          {renderGroup('Due this week', dueThisWeek, 'var(--color-accent)', 'accent')}
-          {renderGroup('Later', later, 'var(--color-border)', 'muted')}
-          {renderGroup('No due date', noDueDate, 'var(--color-border)', 'muted')}
-          {includeDone && renderGroup('Completed', doneItems, 'var(--color-border)', 'muted')}
-        </>
+        <div className="mt-4 divide-y divide-[var(--color-border)] rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+          {activeItems.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-[var(--color-muted)]">Nothing here.</p>
+          ) : (
+            activeItems.map((item) => renderItem(item))
+          )}
+        </div>
       )}
     </div>
   )

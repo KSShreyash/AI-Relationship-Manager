@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { apiFetchMock, pushMock, routerMock } = vi.hoisted(() => {
@@ -51,27 +51,35 @@ describe('PlannerPage', () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/login'))
   })
 
-  it('groups open items into Overdue, Due this week, and No due date sections', async () => {
+  it('always fetches with include_done=true so the Completed tab has data available', async () => {
     apiFetchMock.mockResolvedValue(jsonResponse(ITEMS))
 
     render(<PlannerPage />)
 
-    await waitFor(() => expect(screen.getByText('Overdue task')).toBeInTheDocument())
-    expect(screen.getByText('Due this week', { selector: 'p' })).toBeInTheDocument()
-    expect(screen.getByText('No due date task')).toBeInTheDocument()
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith('/api/action-items?include_done=true'))
   })
 
-  it('refetches with include_done=true when the show-completed toggle is checked', async () => {
-    apiFetchMock.mockImplementation(() => Promise.resolve(jsonResponse(ITEMS)))
+  it('buckets items into tabs by due date and shows each tab\'s count', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(ITEMS))
 
     render(<PlannerPage />)
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalled())
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /show completed/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /^overdue/i })).toHaveTextContent('1'))
+    expect(screen.getByRole('button', { name: /^this week/i })).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /^no date/i })).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /^today/i })).toHaveTextContent('0')
 
-    await waitFor(() =>
-      expect(apiFetchMock).toHaveBeenLastCalledWith('/api/action-items?include_done=true')
-    )
+    // Default tab is "Today", which has no items yet.
+    expect(screen.getByText('Nothing here.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^overdue/i }))
+    expect(screen.getByText('Overdue task')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^this week/i }))
+    expect(screen.getByText('Due this week')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^no date/i }))
+    expect(screen.getByText('No due date task')).toBeInTheDocument()
   })
 
   it('marks an item done and refetches the list', async () => {
@@ -83,9 +91,11 @@ describe('PlannerPage', () => {
     })
 
     render(<PlannerPage />)
-    await waitFor(() => expect(screen.getByText('Overdue task')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /^overdue/i })).toHaveTextContent('1'))
+    fireEvent.click(screen.getByRole('button', { name: /^overdue/i }))
+    expect(screen.getByText('Overdue task')).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('checkbox', { name: /mark done/i })[0])
+    fireEvent.click(screen.getByRole('checkbox', { name: /mark done/i }))
 
     await waitFor(() =>
       expect(apiFetchMock).toHaveBeenCalledWith('/api/action-items/1', {
@@ -105,15 +115,17 @@ describe('PlannerPage', () => {
     })
 
     render(<PlannerPage />)
-    await waitFor(() => expect(screen.getByText('Overdue task')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /^overdue/i })).toHaveTextContent('1'))
+    fireEvent.click(screen.getByRole('button', { name: /^overdue/i }))
+    expect(screen.getByText('Overdue task')).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('checkbox', { name: /mark done/i })[0])
+    fireEvent.click(screen.getByRole('checkbox', { name: /mark done/i }))
 
     await waitFor(() => expect(screen.getByText(/something went wrong/i)).toBeInTheDocument())
     expect(screen.getByText('Overdue task')).toBeInTheDocument()
   })
 
-  it('shows the Later group, the Completed section, and a contact avatar/name when present', async () => {
+  it('shows the Next week tab, the Completed tab, and a contact avatar/name when present', async () => {
     const EXTENDED_ITEMS = [
       { id: '4', text: 'Later task', direction: 'mine', status: 'open', due_date: '2026-08-01', contact: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
       { id: '5', text: 'Done task', direction: 'mine', status: 'done', due_date: '2026-07-15', contact: null, created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z' },
@@ -122,23 +134,18 @@ describe('PlannerPage', () => {
     apiFetchMock.mockImplementation(() => Promise.resolve(jsonResponse(EXTENDED_ITEMS)))
 
     render(<PlannerPage />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /^next week/i })).toHaveTextContent('1'))
 
-    await waitFor(() => expect(screen.getByText('Later task')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /^next week/i }))
+    expect(screen.getByText('Later task')).toBeInTheDocument()
 
-    const laterHeading = screen.getByRole('heading', { name: 'Later' })
-    expect(within(laterHeading.nextElementSibling as HTMLElement).getByText('Later task')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^completed/i }))
+    expect(screen.getByText('Done task')).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole('button', { name: /^no date/i }))
+    expect(screen.getByText('Contact task')).toBeInTheDocument()
     expect(screen.getByText(/Dana/)).toBeInTheDocument()
     expect(screen.getByText('D')).toBeInTheDocument()
-
-    expect(screen.queryByText('Done task')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Completed' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('checkbox', { name: /show completed/i }))
-
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Completed' })).toBeInTheDocument())
-    const completedHeading = screen.getByRole('heading', { name: 'Completed' })
-    expect(within(completedHeading.nextElementSibling as HTMLElement).getByText('Done task')).toBeInTheDocument()
   })
 
   it('shows a Schedule control on open items with a contact and hides it once scheduled', async () => {
@@ -159,7 +166,10 @@ describe('PlannerPage', () => {
 
     render(<PlannerPage />)
 
-    await waitFor(() => expect(screen.getByText(/Call Gina/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /^no date/i })).toHaveTextContent('2'))
+    fireEvent.click(screen.getByRole('button', { name: /^no date/i }))
+
+    expect(screen.getByText(/Call Gina/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^schedule$/i })).toBeInTheDocument()
     expect(screen.getByText(/scheduled:/i)).toBeInTheDocument()
   })

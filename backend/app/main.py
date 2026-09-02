@@ -8,7 +8,7 @@ from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="AI Relationship Manager API")
+app = FastAPI(title="AI Assistant API")
 
 app.add_middleware(
     CORSMiddleware,

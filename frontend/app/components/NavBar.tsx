@@ -68,7 +68,7 @@ export default function NavBar() {
       <div className="mb-8 flex items-center justify-between px-1">
         {!collapsed && (
           <span className="truncate text-sm font-semibold tracking-wide text-[var(--color-fg)]">
-            AI Relationship Manager
+            AI Assistant
           </span>
         )}
         <Button

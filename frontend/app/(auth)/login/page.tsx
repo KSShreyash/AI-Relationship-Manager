@@ -53,7 +53,7 @@ export default function LoginPage() {
             Stop Losing Relationships. Let AI Manage Every Conversation.
           </h1>
           <p className="mt-6 max-w-md text-base text-[var(--color-muted)]">
-            AI Relationship Manager reads your emails and meetings, extracts what you
+            AI Assistant reads your emails and meetings, extracts what you
             committed to, and schedules the follow-up before it slips.
           </p>
 

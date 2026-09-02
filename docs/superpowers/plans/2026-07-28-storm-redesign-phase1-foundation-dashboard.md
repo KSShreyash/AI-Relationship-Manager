@@ -78,7 +78,7 @@ The repo root has an untracked `favicon.ico` (user-supplied) that must replace `
 cp "favicon.ico" "frontend/app/favicon.ico"
 ```
 
-Run this from the repo root (`C:\Drive D\Yolex Labs\AI Scheduler`). Verify the file changed size/content:
+Run this from the repo root. Verify the file changed size/content:
 
 ```bash
 ls -la frontend/app/favicon.ico

@@ -17,7 +17,7 @@
 - All Microsoft Graph tokens are Fernet-encrypted at rest; the Fernet key lives only in backend env vars, never in the DB or frontend.
 - RLS enabled on every `public` table, even though the primary access path is FastAPI's service-role connection (defense-in-depth per the Supabase security checklist).
 - No custom domain yet — frontend calls Render's default `*.onrender.com` URL directly (server-side only, never exposed to browser JS); Cloudflare reverse proxy is an explicit non-goal for this phase.
-- Monorepo: `backend/` (FastAPI) and `frontend/` (Next.js) as siblings at the repo root, which is `C:\Drive D\Yolex Labs\AI Scheduler`.
+- Monorepo: `backend/` (FastAPI) and `frontend/` (Next.js) as siblings at the repo root.
 
 ## File Structure
 
